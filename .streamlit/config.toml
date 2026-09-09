@@ -1,0 +1,26 @@
+# Streamlit 前端配置（v7.1 方案 B：去默认皮肤）
+#
+# !! 改完必须重启 streamlit 才生效 —— config.toml 不支持热更新。
+#    常见坑：改了半天没反应，其实是没重启进程。
+#
+# !! 主色在**两处**都要写：
+#      - 这里的 primaryColor（Streamlit 原生组件用，如进度条、radio）
+#      - src/ui_style.py 里的 PRIMARY（自定义 CSS 用，如按钮 hover）
+#    config.toml 读不到 Python 变量，只能手工同步。改色时记得两处一起改。
+
+[theme]
+base = "light"
+primaryColor = "#2C6EAB"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F7F7F5"
+textColor = "#1F1F1D"
+font = "sans serif"
+
+[client]
+# 生产环境不该把 Python 堆栈甩给师生看。排查问题时临时改成 true
+showErrorDetails = false
+# 隐藏右上角工具栏（Settings / 主题切换 / 录制），界面更干净
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false

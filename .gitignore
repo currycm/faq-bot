@@ -1,0 +1,29 @@
+# 日志与运行时产物
+logs/*.log
+logs/*.jsonl
+
+# 环境变量与密钥（!!! 严禁提交 !!!）
+.env
+.env.*
+!.env.example
+
+# 密钥与证书
+*.pem
+*.key
+*.crt
+secrets/
+
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 编辑器
+.vscode/
+.idea/
+
+# 系统
+.DS_Store
+Thumbs.db

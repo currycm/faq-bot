@@ -1,0 +1,42 @@
+# ---- v1 核心依赖（必装）----
+jieba>=0.42.1
+scikit-learn>=1.3.0
+numpy>=1.24.0
+
+# ---- 网页入口（可选，用于 streamlit run app.py）----
+streamlit>=1.28.0
+
+# ---- v3 升级 BGE 向量化（推荐）----
+# 首次运行会从 HuggingFace Hub 下载 BGE 模型到本地缓存：
+#   - BAAI/bge-small-zh-v1.5  ~93MB
+#   - BAAI/bge-base-zh-v1.5    ~408MB
+#
+# !! torch 不写在这里 !!
+# Docker 构建时先单独装 CPU 版 torch（见 Dockerfile），避免拉 554MB 的 CUDA 版。
+# 本地开发如需 torch：pip install torch --index-url <清华/cpu 源>
+sentence-transformers>=2.2.0
+
+# ---- v2 升级 BERT 向量化时追加（可选，已被 BGE 取代）----
+# 安装 torch 请先到 https://pytorch.org 选择与你 CUDA 版本匹配的安装命令
+# torch>=2.0.0
+# transformers>=4.35.0
+
+# ---- v2 启用 Cross-Encoder 精排时追加 ----
+# pip install sentence-transformers
+# 然后用 CrossEncoder("BAAI/bge-reranker-base") 加载
+
+# ---- v4 大模型兜底不需要额外依赖，用的是标准库 urllib ----
+
+# ---- v5 API Key 保护（必装）----
+# 让 src/config.py 启动时自动加载 .env，避免把密钥硬编码进代码
+python-dotenv>=1.0.0
+
+# ---- v7 W1 生产部署（Docker 镜像里 gunicorn 起多 worker）----
+# !!! 装 gunicorn 同时装 uvicorn[standard]，worker 类名是 uvicorn.workers.UvicornWorker
+# !!! fastapi 是 api.py 的直接依赖，之前漏写导致容器 ImportError（本地装过才没暴露）
+fastapi>=0.104.0
+gunicorn>=21.2.0
+uvicorn[standard]>=0.24.0
+
+# ---- W2 安全层（已无需新依赖，纯标准库）----
+# pytest / httpx 仅开发/测试用，Docker 镜像里不需要（但装上也不影响）

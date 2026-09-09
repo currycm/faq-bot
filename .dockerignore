@@ -1,0 +1,40 @@
+# 忽略掉不要打进镜像的文件
+# 这样 docker build 时 .env 不会泄露到镜像层
+
+# 敏感文件
+.env
+.env.*
+secrets/
+nginx/certs/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# 测试 / 日志 / 临时
+tests/
+logs/
+*.log
+*.tmp
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 文档（镜像里不需要，README 在外层仓库就有）
+README.md
+*.md
+
+# Docker 自身
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 部署/回滚脚本
+scripts/*.sh
+scripts/_*.py

@@ -1,0 +1,71 @@
+# faq-bot docker-compose.yml
+#
+# 启动：
+#   docker compose up -d
+# 查看日志：
+#   docker compose logs -f api
+# 停止：
+#   docker compose down
+#
+# !! 首次部署前准备：
+#   1. mkdir -p secrets logs
+#   2. echo -n "sk-xxx" > secrets/deepseek_key.txt
+#   3. echo -n "your-key" > secrets/hefeng_key.txt
+#
+# 本文件只跑 api：nginx 层等 TLS 证书准备就绪后再加回来，
+# 到时候 api 的 ports 要改成 expose（不再直接对宿主暴露 8000）。
+
+services:
+  api:
+    build: .
+    image: faq-bot:v7.0
+    container_name: faq-bot-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"          # 联调阶段先直暴露 8000，便于本地访问
+    environment:
+      # KEY 经 Docker secret 注入（敏感内容不会出现在 docker inspect）
+      - DEEPSEEK_API_KEY_FILE=/run/secrets/deepseek_key
+      - HEFENG_API_KEY_FILE=/run/secrets/hefeng_key
+      # !! 和风「自定义域名」前缀是控制台分配的 mc3byj5bbc，**不是** API key 的前 8 位。
+      #    之前填成 key 前缀 b42fbaf8 → 边缘节点直接裸 403（无 body），排查了很久。
+      #    自定义域名下 weather 和 geo 共用同一个 host，只是 path 不同：
+      #      weather → {BASE}/v7/weather/now
+      #      geo     → {BASE}/geo/v2/city/lookup  （代码里拼的是 "{GEO_URL}/v2/city/lookup"）
+      #    所以 GEO_URL 必须带 /geo 后缀；官方 devapi 用户才用 https://geoapi.qweather.com
+      - HEFENG_BASE_URL=https://mc3byj5bbc.re.qweatherapi.com
+      - HEFENG_GEO_URL=https://mc3byj5bbc.re.qweatherapi.com/geo
+      # 通用配置
+      - LOG_LEVEL=info
+      # 强制 HuggingFace 离线（模型已预下载进镜像）
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+    secrets:
+      - deepseek_key
+      - hefeng_key
+    volumes:
+      # 日志持久化（容器重启日志不丢）
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; \
+              urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s    # BGE 模型首次加载要给足时间
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M    # BGE 模型约 400MB + worker 余量
+        reservations:
+          cpus: "1.0"
+          memory: 1024M
+
+secrets:
+  # !! 文件权限设为 0400（仅 root 可读），容器内映射到 /run/secrets/
+  deepseek_key:
+    file: ./secrets/deepseek_key.txt
+  hefeng_key:
+    file: ./secrets/hefeng_key.txt
