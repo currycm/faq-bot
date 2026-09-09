@@ -114,6 +114,7 @@ COPY --chown=app:app api.py /app/
 COPY --chown=app:app app.py /app/
 COPY --chown=app:app src/ /app/src/
 COPY --chown=app:app data/ /app/data/
+COPY --chown=app:app assets/ /app/assets/
 
 # 模型缓存目录归属 app 用户
 RUN chown -R app:app /home/app/.cache
