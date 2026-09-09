@@ -89,10 +89,27 @@ def render_candidates(r: dict) -> None:
 # ---------------------------------------------------------------- API 客户端
 API_BASE = os.environ.get("FAQ_API_BASE", "http://127.0.0.1:8000")
 
+# 未设置 FAQ_API_BASE 时（例如 Hugging Face Spaces 单进程部署），
+# 直接在进程内调用 FaqBot，而不是发 HTTP 请求到独立后端。
+_USE_LOCAL_BOT = not os.environ.get("FAQ_API_BASE")
+
+
+@st.cache_resource(show_spinner="正在加载模型…")
+def _get_bot():
+    """懒加载并缓存 FaqBot 单例（首次调用时构建向量索引 + 加载 BGE）。"""
+    from src.agent import FaqBot
+    return FaqBot()
+
 
 @st.cache_data(ttl=10)
 def api_health() -> dict:
-    """读 /health，缓存 10 秒。"""
+    """读 /health（有后端时）或检查进程内模型（无后端时），缓存 10 秒。"""
+    if _USE_LOCAL_BOT:
+        try:
+            _get_bot()
+            return {"status": "ok", "ready": True}
+        except Exception as exc:
+            return {"status": "error", "ready": False, "detail": str(exc)}
     try:
         r = requests.get(f"{API_BASE}/health", timeout=3)
         r.raise_for_status()
@@ -103,7 +120,12 @@ def api_health() -> dict:
 
 @st.cache_data(ttl=60)
 def api_suggest() -> list[str]:
-    """读 /suggest，缓存 60 秒（推荐问题很少变）。"""
+    """读 /suggest（有后端时）或直接取进程内推荐（无后端时），缓存 60 秒。"""
+    if _USE_LOCAL_BOT:
+        try:
+            return _get_bot().suggest_questions()
+        except Exception:
+            return list(config.MANUAL_SUGGESTED_QUESTIONS)
     try:
         r = requests.get(f"{API_BASE}/suggest", timeout=3)
         r.raise_for_status()
@@ -113,7 +135,23 @@ def api_suggest() -> list[str]:
 
 
 def api_ask(query: str, user_id: str) -> dict:
-    """调 /ask。失败时返回错误 dict 供前端兜底展示。"""
+    """调 /ask（有后端时）或进程内直答（无后端时）。失败时返回错误 dict。"""
+    if _USE_LOCAL_BOT:
+        try:
+            return _get_bot().ask(query, user_id=user_id)
+        except Exception as exc:
+            return {
+                "answer": "服务暂时不可用，请稍后再试。",
+                "matched": False,
+                "tag": None,
+                "score": 0.0,
+                "fallback": {"type": "error", "source": "fixed_api_down", "rule": ""},
+                "candidates": [],
+                "latency_ms": 0,
+                "trace_id": "n/a",
+                "vectorizer": "",
+                "_error": str(exc),
+            }
     try:
         r = requests.post(
             f"{API_BASE}/ask",
