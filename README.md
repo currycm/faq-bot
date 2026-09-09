@@ -4,10 +4,10 @@
 >
 > 🔗 **在线体验**：`（部署后把链接放这里，例如 Hugging Face Spaces / Railway 地址）`
 >
-> 📸 **效果截图**（本机 `streamlit run app.py` 后截图替换此处）：
+> 📸 **效果截图**：
 > | 问常见问题 | 问天气 | 被安全拦截 |
 > |---|---|---|
-> | `（截图1）` | `（截图2）` | `（截图3）` |
+> | ![问常见问题](docs/screenshots/screenshot-faq.png) | ![问天气](docs/screenshots/screenshot-weather.png) | ![被安全拦截](docs/screenshots/screenshot-safety.png) |
 
 ### 🎯 关键成果（简历可直接用）
 - **问答召回率 100%**：将检索方案从 TF-IDF 升级为中文语义向量（BGE）后，封闭测试集召回@1 从 **57% → 100%**
