@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 600" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2C6EAB"/>
+    </marker>
+    <style>
+      .bg      { fill: #F7F8FA; }
+      .title   { fill: #1F2933; font-size: 20px; font-weight: 700; text-anchor: middle; }
+      .boxt    { fill: #1F2933; font-size: 15px; font-weight: 600; text-anchor: middle; }
+      .boxsub  { fill: #52606D; font-size: 12px; text-anchor: middle; }
+      .layer   { fill: #2C6EAB; font-size: 13px; font-weight: 600; text-anchor: middle; }
+      .edge    { stroke: #2C6EAB; stroke-width: 2; fill: none; }
+      .edge2   { stroke: #9AA4B2; stroke-width: 1.5; fill: none; }
+      .u       { fill: #E8F0F7; stroke: #2C6EAB; stroke-width: 1.5; }
+      .api     { fill: #FFFFFF; stroke: #2C6EAB; stroke-width: 1.5; }
+      .sec     { fill: #EAF1F8; stroke: #2C6EAB; stroke-width: 1.5; }
+      .ret     { fill: #EAF7EE; stroke: #3E8E5A; stroke-width: 1.5; }
+      .fal     { fill: #FBF3E0; stroke: #C08A2D; stroke-width: 1.5; }
+      .data    { fill: #FFFFFF; stroke: #9AA4B2; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="880" height="600"/>
+  <text class="title" x="440" y="34">校园 FAQ 问答机器人 · 系统架构</text>
+
+  <!-- Layer 0: User -->
+  <rect class="u" x="330" y="56" width="220" height="46" rx="10"/>
+  <text class="boxt" x="440" y="78">用户浏览器（Streamlit UI :8510）</text>
+  <text class="boxsub" x="440" y="95">高频问题 chip · 去 AI 味界面</text>
+
+  <!-- arrow -->
+  <path class="edge" d="M440,102 L440,128" marker-end="url(#arrow)"/>
+
+  <!-- Layer 1: Nginx -->
+  <rect class="api" x="330" y="130" width="220" height="40" rx="10"/>
+  <text class="boxt" x="440" y="155">Nginx 反向代理（:80 → :8000）</text>
+
+  <path class="edge" d="M440,170 L440,198" marker-end="url(#arrow)"/>
+
+  <!-- Layer 2: FastAPI -->
+  <rect class="api" x="320" y="200" width="240" height="44" rx="10"/>
+  <text class="boxt" x="440" y="222">FastAPI 网关</text>
+  <text class="boxsub" x="440" y="238">/health  /ask  /suggest</text>
+
+  <!-- arrow into security -->
+  <path class="edge" d="M440,244 L440,283" marker-end="url(#arrow)"/>
+
+  <!-- Layer 3: W2 Security (single container, 4 cells) -->
+  <rect class="sec" x="50" y="285" width="780" height="92" rx="10"/>
+  <text class="layer" x="440" y="306">W2 安全层（四道防线，按顺序生效）</text>
+  <!-- dividers -->
+  <line x1="245" y1="314" x2="245" y2="371" stroke="#C9D6E3" stroke-width="1"/>
+  <line x1="440" y1="314" x2="440" y2="371" stroke="#C9D6E3" stroke-width="1"/>
+  <line x1="635" y1="314" x2="635" y2="371" stroke="#C9D6E3" stroke-width="1"/>
+  <text class="boxt" x="147" y="334" style="font-size:14px">① 注入检测</text>
+  <text class="boxsub" x="147" y="353">高风险直接拒答</text>
+  <text class="boxt" x="342" y="334" style="font-size:14px">② 令牌桶限流</text>
+  <text class="boxsub" x="342" y="353">IP + user 双维度</text>
+  <text class="boxt" x="537" y="334" style="font-size:14px">③ 预算熔断</text>
+  <text class="boxsub" x="537" y="353">1h · 500次 · 10元</text>
+  <text class="boxt" x="732" y="334" style="font-size:14px">④ PII 脱敏</text>
+  <text class="boxsub" x="732" y="353">喂 LLM 前替换</text>
+
+  <!-- bus from security to retrieval/fallback/logs -->
+  <path class="edge" d="M440,377 L440,392" marker-end="url(#arrow)"/>
+  <line class="edge2" x1="240" y1="392" x2="640" y2="392"/>
+  <path class="edge" d="M240,392 L240,400" marker-end="url(#arrow)"/>
+  <path class="edge" d="M440,392 L440,510" marker-end="url(#arrow)"/>
+  <path class="edge" d="M640,392 L640,400" marker-end="url(#arrow)"/>
+
+  <!-- Layer 4: retrieval + fallback -->
+  <rect class="ret" x="50" y="400" width="380" height="80" rx="10"/>
+  <text class="boxt" x="240" y="424" style="fill:#1F2933">BGE 向量召回</text>
+  <text class="boxsub" x="240" y="444">retriever + ranker（Cross-Encoder 精排）</text>
+  <text class="boxsub" x="240" y="462">命中（≥0.60）→ 知识库答案</text>
+
+  <rect class="fal" x="450" y="400" width="380" height="80" rx="10"/>
+  <text class="boxt" x="640" y="424" style="fill:#1F2933">兜底路由器</text>
+  <text class="boxsub" x="640" y="444">闲聊 / 实时(天气) / 校园 / 通识(LLM)</text>
+  <text class="boxsub" x="640" y="462">任何层失败 → 统一降级固定话术</text>
+
+  <!-- Layer 5: data boxes -->
+  <path class="edge2" d="M240,480 L170,510" marker-end="url(#arrow)"/>
+  <path class="edge2" d="M640,480 L710,510" marker-end="url(#arrow)"/>
+
+  <rect class="data" x="50" y="510" width="240" height="54" rx="8"/>
+  <text class="boxt" x="170" y="534" style="font-size:14px">语料库 qa_corpus.json</text>
+  <text class="boxsub" x="170" y="552">38 意图 / 311 问法</text>
+
+  <rect class="data" x="320" y="510" width="240" height="54" rx="8"/>
+  <text class="boxt" x="440" y="534" style="font-size:14px">运行日志 logs/</text>
+  <text class="boxsub" x="440" y="552">unmatched / feedback</text>
+
+  <rect class="data" x="590" y="510" width="240" height="54" rx="8"/>
+  <text class="boxt" x="710" y="534" style="font-size:14px">外部 API</text>
+  <text class="boxsub" x="710" y="552">DeepSeek / 和风天气</text>
+</svg>

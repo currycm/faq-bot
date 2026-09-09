@@ -9,6 +9,12 @@
 
 > 配套设计文档见同目录下的《FAQ问答机器人架构设计.docx》。
 
+## 系统架构
+
+![系统架构图](docs/architecture.svg)
+
+浏览器经 Nginx 反代访问 FastAPI；请求先过 **W2 安全层**四道防线，命中知识库直接返回，未命中走**兜底路由器**（闲聊 / 实时 / 校园 / 通识），任何层失败都降级到固定话术、绝不裸抛。
+
 ## 快速开始
 
 ```bash
@@ -71,6 +77,8 @@ faq-bot/
 ├── logs/                     # 运行日志（自动生成）
 ├── app.py                    # Streamlit 网页入口
 ├── evaluate.py               # 效果评估脚本
+├── docs/
+│   └── architecture.svg     # 系统架构图（见「系统架构」一节）
 ├── .streamlit/
 │   └── config.toml          # 前端主题 token（base/主色/隐藏工具栏与报错栈）
 ├── secrets/                 # Docker secret 文件（不进 git，见 Docker 部署）
