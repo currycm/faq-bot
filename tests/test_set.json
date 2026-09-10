@@ -393,6 +393,114 @@
     {
       "query": "NIIT-WIFI连上就掉了咋办",
       "expected_tag": "xxh_wifi_drop"
+    },
+    {
+      "query": "大一新生几号去学校报到啊",
+      "expected_tag": "enrollment_report"
+    },
+    {
+      "query": "去学校要准备什么证件和材料",
+      "expected_tag": "enrollment_report"
+    },
+    {
+      "query": "团籍怎么转入新学校",
+      "expected_tag": "enrollment_report"
+    },
+    {
+      "query": "饭堂刷微信行不行",
+      "expected_tag": "canteen_info"
+    },
+    {
+      "query": "晚上饿了去哪吃东西",
+      "expected_tag": "canteen_info"
+    },
+    {
+      "query": "清真餐在哪层",
+      "expected_tag": "canteen_info"
+    },
+    {
+      "query": "我的快递到哪取",
+      "expected_tag": "express_pickup"
+    },
+    {
+      "query": "收件人地址该怎么填才对",
+      "expected_tag": "express_pickup"
+    },
+    {
+      "query": "大包裹去驿站还是门口",
+      "expected_tag": "express_pickup"
+    },
+    {
+      "query": "想去招聘会投简历怎么弄",
+      "expected_tag": "career_center"
+    },
+    {
+      "query": "实习鉴定表找谁盖章",
+      "expected_tag": "career_center"
+    },
+    {
+      "query": "三方协议去哪签",
+      "expected_tag": "career_center"
+    },
+    {
+      "query": "想找人聊聊心里事怎么预约",
+      "expected_tag": "psych_counseling"
+    },
+    {
+      "query": "学校有免费的心理咨询吗",
+      "expected_tag": "psych_counseling"
+    },
+    {
+      "query": "心情很崩溃能打哪个电话",
+      "expected_tag": "psych_counseling"
+    },
+    {
+      "query": "捡到一张校园卡应该交给谁",
+      "expected_tag": "lost_found"
+    },
+    {
+      "query": "我书包落食堂了去哪找",
+      "expected_tag": "lost_found"
+    },
+    {
+      "query": "校内的失物招领小程序叫啥",
+      "expected_tag": "lost_found"
+    },
+    {
+      "query": "新生能参加几个学生社团",
+      "expected_tag": "club_recruit"
+    },
+    {
+      "query": "今年百团大战啥时候办",
+      "expected_tag": "club_recruit"
+    },
+    {
+      "query": "入社团要不要交会费",
+      "expected_tag": "club_recruit"
+    },
+    {
+      "query": "羽毛球场怎么提前订",
+      "expected_tag": "venue_booking"
+    },
+    {
+      "query": "想借个会议室搞活动找谁批",
+      "expected_tag": "venue_booking"
+    },
+    {
+      "query": "周末健身房对学生开门吗",
+      "expected_tag": "venue_booking"
+    },
+    {
+      "query": "论文去哪打印装订",
+      "expected_tag": "printing_service"
+    },
+    {
+      "query": "图书馆楼下的自助打印机咋用",
+      "expected_tag": "printing_service"
+    },
+    {
+      "query": "海报彩印去校内哪家店",
+      "expected_tag": "printing_service"
     }
   ]
 }

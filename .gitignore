@@ -1,6 +1,6 @@
 # 日志与运行时产物
-logs/*.log
-logs/*.jsonl
+logs/
+data/raw_notices/
 
 # 环境变量与密钥（!!! 严禁提交 !!!）
 .env
