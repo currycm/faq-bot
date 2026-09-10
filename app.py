@@ -249,18 +249,6 @@ def main() -> None:
         if not st.session_state.history:
             st.caption("答案来自学校通知；知识库没有的会如实告诉你，不会编。")
 
-        # ---------------------------------------------------------- 提问
-        query = st.chat_input("问点什么？比如：图书馆几点关门")
-        if not query:
-            query = st.session_state.pop("pending_query", None)
-
-        if query:
-            # LLM 兜底要 1~3 秒，spinner 让用户知道在处理。
-            # 文案用中性的「查询中」而不是「正在思考…」——后者是拟人化 AI 味。
-            with st.spinner("查询中"):
-                result = api_ask(query, user_id="streamlit_user")
-            st.session_state.history.append((query, result))
-
         # ---------------------------------------------------------- 渲染对话
         for i, (q, r) in enumerate(st.session_state.history):
             with st.chat_message("user"):
@@ -349,6 +337,20 @@ def main() -> None:
 
         # ---------------------------------------------------------- 高频问题（输入栏上方）
         _render_suggestions()
+
+        # ---------------------------------------------------------- 提问
+        # 放在 tab 内脚本最末 → 内联渲染在底部；
+        # 因为 st.chat_input 在 st.tabs 内不会浮动到底部，必须排在最后才视觉置底。
+        query = st.chat_input("问点什么？比如：图书馆几点关门")
+        if not query:
+            query = st.session_state.pop("pending_query", None)
+        if query:
+            # LLM 兜底要 1~3 秒，spinner 让用户知道在处理。
+            # 文案用中性的「查询中」而不是「正在思考…」——后者是拟人化 AI 味。
+            with st.spinner("查询中"):
+                result = api_ask(query, user_id="streamlit_user")
+            st.session_state.history.append((query, result))
+            st.rerun()
 
 
 if __name__ == "__main__":

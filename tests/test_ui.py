@@ -186,9 +186,10 @@ def test_debug_hidden_by_default():
 def test_suggestions_above_input():
     """防回归：7 个高频问题必须渲染在输入栏上方（代码顺序 = 视觉顺序）。
 
-    原理：st.chat_input 无论写在脚本哪一行都会被 Streamlit 塞进底部固定容器，
-    所以主区最后一个元素就是紧贴输入框的那个。只要 _render_suggestions()
-    的调用行号大于 st.chat_input，视觉上就一定在输入框正上方。
+    !! 重要：app.py 用 st.tabs 把问答拆成了 tab。在 st.tabs 内部，
+    st.chat_input **不会**浮动到底部固定容器，而是按代码顺序内联渲染。
+    因此视觉上要让输入栏落在最底端，它必须是 tab 内脚本的最后一个元素，
+    _render_suggestions()（紧贴输入框上方）排在其前。
 
     另外校验 container key 和 CSS 类名是配套的 —— 改了 key 忘了改 CSS，
     chip 样式会静默失效（跟主色要在 config.toml 和 ui_style.py 两处同步是同类坑）。
@@ -210,9 +211,12 @@ def test_suggestions_above_input():
     sug_line = _code_line("_render_suggestions()")
     assert chat_line is not None, "找不到 st.chat_input"
     assert sug_line is not None, "找不到 _render_suggestions() 的调用"
-    assert sug_line > chat_line, (
-        f"_render_suggestions()（第 {sug_line + 1} 行）必须在 "
-        f"st.chat_input（第 {chat_line + 1} 行）之后，否则推荐问题会被输入框挤下去"
+    # 在 st.tabs 内 chat_input 不浮动，必须排在最后才视觉置底；
+    # 推荐问题区(_render_suggestions)在它之前 → 紧贴输入框上方。
+    assert chat_line > sug_line, (
+        f"st.chat_input（第 {chat_line + 1} 行）必须在 "
+        f"_render_suggestions()（第 {sug_line + 1} 行）之后，否则在 st.tabs 内"
+        f"输入栏不会落在底端"
     )
 
     # key 与 CSS 类名配套

@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
-"""校园地图（纯前端，无需后端）— 方案 B：手绘地图图片叠加 + 可点击 POI
+"""校园地图（纯前端，无需后端）— 方案 B：手绘地图图片叠加（底图，无标记）
 
 实现：
     - 两张手绘地图（天堂校区 / 仙林校区）作为各校区地图底图，用 Folium ImageOverlay 叠加。
     - 图片以 base64 内嵌进地图 HTML，无需静态文件服务器（单进程部署 / HF Spaces 也能用）。
-    - POI 用「图片内相对坐标 (x%, y%)」定义，自动映射到图片地理边界，
-      保证红色标记精确落在手绘图对应位置，与真实经纬度解耦。
+    - 当前仅展示手绘底图；POI 数据仍保留在 CAMPUSES 中，可按需恢复标记渲染。
 
 ⚠️ 数据来源说明：
     - campus["center"] 为校区地理中心（估算值，请按需校准，仅用于让地图默认落在正确城市区域）。
@@ -22,7 +21,6 @@ from pathlib import Path
 import folium
 import streamlit as st
 from folium.raster_layers import ImageOverlay
-from streamlit_folium import st_folium
 
 _ASSET_DIR = Path(__file__).resolve().parent.parent / "assets" / "campus_maps"
 
@@ -185,31 +183,25 @@ def _build_map(campus_key: str) -> folium.Map:
         zindex=1,
     ).add_to(m)
     m.fit_bounds(bounds)
-
-    for p in campus["pois"]:
-        lat, lon = _rel_to_latlon(bounds, p["x"], p["y"])
-        folium.Marker(
-            location=(lat, lon),
-            tooltip=p["name"],
-            popup=f"<b>{p['name']}</b><br>{p.get('desc', '')}",
-            icon=folium.Icon(color="red", icon="info-sign"),
-        ).add_to(m)
     return m
 
 
 def render_campus_map() -> None:
-    """在校园地图 tab 中渲染：校区切换 + 手绘地图叠加 + 可点击 POI。"""
-    st.caption("手绘地图可缩放 / 拖拽；点击红色标记查看地点简介，右上角可切换校区。")
+    """在校园地图 tab 中渲染：校区切换 + 手绘地图底图（无标记）。"""
+    st.caption("手绘地图可缩放 / 拖拽；右上角可切换校区。")
 
     campus_key = st.selectbox("选择校区", list(CAMPUSES.keys()), index=0, key="campus_select")
     m = _build_map(campus_key)
-    st_folium(m, height=520, key=f"campus_map_{campus_key}", use_container_width=True)
-
-    with st.expander("如何补充 / 修改地标（POI）"):
-        st.markdown(
-            "打开 `src/campus_map.py`，在对应校区的 `pois` 列表里按格式添加：\n"
-            "```python\n"
-            '{"name": "图书馆", "x": 35, "y": 40, "desc": "开放时间 8:00-22:00"}\n'
-            "```\n"
-            "`x` / `y` 是手绘图上的百分比位置（x:0=左 100=右，y:0=上 100=下），与真实经纬度无关。"
+    # 用 st.components.v1.html 嵌入 Folium 生成的完整 HTML，
+    # 避免 streamlit-folium 自定义组件在 iframe/预览环境里加载失败。
+    # key 绑定校区：切换校区 / 切回 tab 时强制重挂载 iframe，避免 srcdoc 不刷新导致空白。
+    html = m.get_root().render()
+    try:
+        st.components.v1.html(
+            html, height=520, scrolling=True, key=f"campus_map_{campus_key}"
         )
+    except Exception:
+        # 兜底：少数环境（如 AppTest 对带 key 的 components 支持不全）无法渲染 iframe，
+        # 直接显示手绘原图，保证地图始终可见、不会整片空白。
+        img_path = _ASSET_DIR / CAMPUSES[campus_key]["image"]
+        st.image(str(img_path), caption=campus_key, use_container_width=True)
