@@ -71,8 +71,15 @@ _CITY_BEFORE_WEATHER = re.compile(
     r"([\u4e00-\u9fa5]{2,7}?)" + _TIME_WORDS + r"?的?(?:天气|气温|气候)"
 )
 
-# 问句里的口头禅前缀，抽到地名里要去掉
-_CITY_NOISE_PREFIX = re.compile(r"^(?:请问|帮我|我想|我要|麻烦|查一下|查询|查查|看一下|看看|告诉我)")
+# 问句里的口头禅/疑问前缀，抽到地名里要去掉。
+# 2026-09 修复：补齐疑问词（为什么/怎么/如何/哪里/知道），并用循环
+# 剥到剥不动为止 —— 旧逻辑只剥一次，"我想知道天气"剥完剩"知道"，
+# 被当成城市查 GeoAPI，然后因为 city 非空不回落到默认城市，
+# 用户只能看到"暂时拿不到天气数据"。
+_CITY_NOISE_PREFIX = re.compile(
+    r"^(?:请问|帮我|帮我查一下|帮我查|查一下|查询|查查|看一下|看看|告诉我"
+    r"|我想|我想知道|想知道|我要|麻烦|为什么|怎么|如何|哪里|哪儿|知道)"
+)
 
 
 def extract_city(query: str) -> Optional[str]:
@@ -99,8 +106,15 @@ def extract_city(query: str) -> Optional[str]:
     m = _CITY_BEFORE_WEATHER.search(query)
     if m:
         cand = _CITY_NOISE_PREFIX.sub("", m.group(1))
+        # 循环剥：噪音前缀可能叠多层（"帮我查一下" → "查一下" → ""）
+        while True:
+            stripped = _CITY_NOISE_PREFIX.sub("", cand)
+            if stripped == cand:
+                break
+            cand = stripped
         cand = re.sub(r"^" + _TIME_WORDS, "", cand)
-        if len(cand) >= 2:
+        # 剥完仍有疑问词/动词残留 → 视为没抽到，回落到默认城市
+        if len(cand) >= 2 and not _CITY_NOISE_PREFIX.match(cand):
             return cand
     return None
 
@@ -249,7 +263,8 @@ def format_answer(city: Optional[str] = None) -> str:
         return config.FALLBACK_TEXT
 
     if r is None:
-        return ("暂时拿不到天气数据，稍后再试，或者直接看手机自带的天气 App。\n"
-                "（和风天气 API key 未配置或网络异常）")
+        # 之前这里跟了一句"（和风天气 API key 未配置或网络异常）"，
+        # 把供应商名和密钥状态透给了用户 —— 对用户零价值，还显得服务不靠谱。
+        return "暂时拿不到天气数据，稍后再试，或者直接看手机自带的天气 App。"
 
     return r.format()

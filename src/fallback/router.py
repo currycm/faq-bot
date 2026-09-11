@@ -46,12 +46,14 @@ def _contains_any(text: str, keywords: list[str]) -> Optional[str]:
     """子串匹配（不依赖分词）。返回首个命中的关键词，没有则 None。
 
     用 re 而不是 in：避免大小写、标点差异（如"WiFi" / "wifi"）漏匹配。
+    2026-09 修复：ASCII 关键词加词边界 \\b —— 否则 "hi" 会命中
+    "t-hi-s"、"w-hi-ch"、"hi-story" 等单词，通识问题被误判成闲聊。
     """
     text_lower = text.lower()
     for kw in keywords:
         # 关键词含英文时不区分大小写；中文直接子串匹配
         if any(c.isascii() and c.isalpha() for c in kw):
-            if re.search(re.escape(kw), text_lower, re.IGNORECASE):
+            if re.search(rf"\b{re.escape(kw)}\b", text_lower):
                 return kw
         else:
             if kw in text:
@@ -60,20 +62,26 @@ def _contains_any(text: str, keywords: list[str]) -> Optional[str]:
 
 
 def _classify(query: str) -> QueryType:
-    """纯规则分类，不调任何外部 API。"""
+    """纯规则分类，不调任何外部 API。
+
+    2026-09 修复：优先级重排为 实时 → 校园 → 闲聊 → 通识。
+    旧顺序把闲聊放最前，"你好，请问怎么选课"会拿到一句问候语
+    而不是选课政策——校务绝不该被闲聊吞掉。纯闲聊（"你好"）
+    不含实时/校园词，不受影响。
+    """
     q = query.strip()
 
-    # 1. 闲聊（必须在最前：闲聊不该触发任何 API）
-    if _contains_any(q, config.CHAT_KEYWORDS):
-        return QueryType.CHAT
-
-    # 2. 实时查询
+    # 1. 实时查询
     if _contains_any(q, config.REALTIME_KEYWORDS):
         return QueryType.REALTIME
 
-    # 3. 校园事务（拦截所有"听起来像校务"的问题）
+    # 2. 校园事务（拦截所有"听起来像校务"的问题）
     if _contains_any(q, config.CAMPUS_KEYWORDS):
         return QueryType.CAMPUS
+
+    # 3. 闲聊
+    if _contains_any(q, config.CHAT_KEYWORDS):
+        return QueryType.CHAT
 
     # 4. 默认：通识
     return QueryType.GENERAL
@@ -109,7 +117,7 @@ def _answer_campus() -> tuple[str, str]:
     """校园事务未命中：硬兜底，绝不让 LLM 编。"""
     text = (
         "这个问题涉及到学校的具体政策，目前的知识库还没有覆盖。\n"
-        "建议直接联系相关部门，或者把问题反馈给管理员补充到知识库。\n"
+        "建议直接问相关部门，得到的答复最准确：\n"
         "👉 教务处 / 学工处 / 后勤处 / 数智化中心（详见学校官网）"
     )
     return text, "fixed_campus"
@@ -121,17 +129,35 @@ def _answer_general(query: str, sanitized_query: Optional[str] = None) -> tuple[
     :param query:          原 query（仅日志/审计用）
     :param sanitized_query: 脱敏后的 query（实际送给 LLM 的版本）。
                           None 时退回 query，保持向后兼容。
+
+    2026-09 修复：
+    - budget 检查移到这里（真正调 LLM 前一刻），闲聊/天气/校园
+      事务等零成本通道不再被预算熔断连带打死；
+    - 用结构化 ok 判断 LLM 是否真回复（不再靠子串嗅探），并把
+      usage 折算的真实成本记入预算。
     """
     if not config.DEEPSEEK_ENABLED:
         return config.FALLBACK_TEXT, "fixed_general_disabled"
 
+    # 预算熔断：只拦 LLM 通道
+    from ..security.budget import check_budget, record_llm_call
+    ok, reason = check_budget()
+    if not ok:
+        logger.write_jsonl(config.LOG_PATH, {
+            "event": "budget_tripped",
+            "query_type": "general",
+            "reason": reason,
+        })
+        return getattr(config, "BUDGET_EXHAUSTED_TEXT", config.FALLBACK_TEXT), \
+            "fixed_budget_exhausted"
+
     # 优先用 sanitized_query 喂给 LLM，避免敏感信息进入 prompt
     llm_input = sanitized_query if sanitized_query is not None else query
-    ans = llm_client.format_answer(llm_input)
-    # 通过"DeepSeek 生成"标签判断是否真的拿到 LLM 回复
-    if "DeepSeek 生成" in ans:
-        return ans, "llm"
-    return ans, "fixed_general_fallback"
+    result = llm_client.answer_with_cost(llm_input)
+    if result.ok:
+        record_llm_call(result.cost_cny)
+        return result.text, "llm"
+    return result.text, "fixed_general_fallback"
 
 
 # ---------------------------------------------------------------- 公开入口
@@ -171,10 +197,13 @@ def dispatch(query: str, sanitized_query: Optional[str] = None) -> RouterDecisio
         rule = "unknown"
 
     # 路由日志：调试 + 后续可用于做路由器质量分析
+    # 2026-09 修复：query 写脱敏后的文本，用户夹带的手机号/邮箱
+    # 不得原样落盘（与 logger 层的密钥脱敏互补）。
     if config.ROUTER_LOG_ENABLED:
+        from ..security.redact import redact as _redact
         logger.write_jsonl(config.LOG_PATH, {
             "event": "fallback_dispatch",
-            "query": q,
+            "query": _redact(q).sanitized,
             "type": qt.value,
             "source": src,
             "rule": rule,

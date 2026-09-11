@@ -193,7 +193,6 @@ class FaqBot:
         :param client_ip: 客户端 IP，用于 IP 级限流和审计
         """
         from .security import enforce_security
-        from .security.budget import record_llm_call
 
         t0 = time.perf_counter()
         query = (query or "").strip()
@@ -255,45 +254,35 @@ class FaqBot:
             answer = best.answer
             fallback_info = None
         else:
-            # ---- W2 安全层 第二阶段：budget 检查 + 完整 redact（仅在可能调 LLM 时）----
-            sec_full = enforce_security(
-                query, ip=client_ip, user_id=user_id, will_call_llm=True,
-            )
-            if not sec_full.allowed:
-                # budget / 二次 injection 命中 → 拒答
-                answer = sec_full.refusal_text
-                fallback_info = {"type": "security", "source": "fixed",
-                                 "rule": sec_full.reason}
-                security_reason = sec_full.reason
-                sanitized_for_llm = sec_full.sanitized_query
-            else:
-                sanitized_for_llm = sec_full.sanitized_query
+            # ---- 兜底路由 ----
+            # 2026-09 修复：不再二次调 enforce_security。
+            # 旧逻辑的问题有二：
+            #   1. 限流在两次调用里各扣一次令牌 → 未命中请求的额度
+            #      实际只有配置的一半；
+            #   2. 在路由之前就查 budget（will_call_llm=True）→
+            #      预算耗尽后连闲聊/天气/校园事务都被"系统繁忙"拒答，
+            #      全站瘫痪。现在 budget 检查已下沉到 router 的 LLM
+            #      分支（真正调 LLM 前一刻），只有 LLM 通道受影响。
+            sanitized_for_llm = sec_pre.sanitized_query
+            if getattr(config, "FALLBACK_ROUTER_ENABLED", False):
+                from .fallback import dispatch
                 # !! 关键：dispatch() 只能调一次。
                 #    路由器内部会触发 LLM / 天气 API，调两次 = 双倍费用 + 双倍延迟。
-                #    之前这里 fallback() 调一次、下面又调一次，属于实打实的浪费。
-                if getattr(config, "FALLBACK_ROUTER_ENABLED", False):
-                    from .fallback import dispatch
-                    # 把脱敏后的 query 透传给 LLM 通道；路由器分类仍用原 query
-                    decision = dispatch(query, sanitized_query=sanitized_for_llm)
-                    answer = decision.answer
-                    fallback_info = {
-                        "type": decision.query_type.value,
-                        "source": decision.source,
-                        "rule": decision.rule,
-                    }
-                    # LLM 真调了 → 记录预算
-                    if decision.source == "llm":
-                        record_llm_call()
-                else:
-                    answer = fallback(query, hits, self.threshold)
-                    fallback_info = {"type": "legacy", "source": config.FALLBACK_MODE,
-                                     "rule": ""}
-                    # 旧 llm 模式直接调 LLM 也算一次
-                    if config.FALLBACK_MODE == "llm":
-                        record_llm_call()
+                # 把脱敏后的 query 透传给 LLM 通道；路由器分类仍用原 query
+                decision = dispatch(query, sanitized_query=sanitized_for_llm)
+                answer = decision.answer
+                fallback_info = {
+                    "type": decision.query_type.value,
+                    "source": decision.source,
+                    "rule": decision.rule,
+                }
+            else:
+                answer = fallback(query, hits, self.threshold)
+                fallback_info = {"type": "legacy", "source": config.FALLBACK_MODE,
+                                 "rule": ""}
 
-                # 汇总 PII / injection 命中
-                all_pii_hits = list(set(all_pii_hits) | set(sec_full.pii_hits))
+            # 汇总 PII / injection 命中
+            all_pii_hits = list(set(all_pii_hits) | set(sec_pre.pii_hits))
 
         result = {
             "query": query,

@@ -53,6 +53,12 @@ def source_of(r: dict) -> tuple[str, str]:
     ftype = fb.get("type", "")
     fsrc = fb.get("source", "")
 
+    # 服务故障必须和「知识库没收录」分开说。
+    # 之前没有这一支，error 会落到最后的默认分支、显示成「知识库暂未收录」——
+    # 我们自己的服务挂了，却让学校知识库背锅，用户还会以为"学校确实没这条规定"。
+    if ftype == "error":
+        return "error", "服务暂时不可用，稍后再试"
+
     if ftype == "realtime":
         return "api", "实时数据 · 和风天气" if fsrc == "weather" else "实时数据"
     if fsrc == "llm":

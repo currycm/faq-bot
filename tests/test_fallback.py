@@ -58,11 +58,25 @@ CLASSIFY_CASES = [
     ("什么是机器学习",             QueryType.GENERAL,   "通识 - 概念"),
     ("怎么学好高数",               QueryType.GENERAL,   "通识 - 方法"),
     ("python 怎么读文件",          QueryType.GENERAL,   "通识 - 技术"),
+
+    # ---- 回归用例（2026-09 修复）：英文关键词词边界 / 单字校园词 / 闲聊优先级 ----
+    ("this is a question",        QueryType.GENERAL,   "hi 不得命中 this"),
+    ("which 图书馆几点开门",       QueryType.CAMPUS,    "hi 不得命中 which"),
+    ("history of china",          QueryType.GENERAL,   "hi 不得命中 history"),
+    ("关系数据库是什么",           QueryType.GENERAL,   "单字'系'不得命中校务"),
+    ("系统论是什么",               QueryType.GENERAL,   "单字'系'不得命中校务"),
+    ("专业英语怎么学",             QueryType.GENERAL,   "'专业'不得误伤专业英语"),
+    ("你好，请问怎么选课",         QueryType.CAMPUS,    "校务优先于闲聊"),
+    ("谢谢，宿舍几点熄灯",         QueryType.CAMPUS,    "校务优先于闲聊"),
 ]
 
 
 def test_classify():
-    """路由器分类必须正确。"""
+    """路由器分类必须正确。
+
+    【修复】此前用 return False 表示失败，pytest 下返回值被忽略，
+    检测失效（永远绿）。现在改为 assert，失败会真实报错。
+    """
     print("=" * 60)
     print("测试 1：路由器分类")
     print("=" * 60)
@@ -76,13 +90,12 @@ def test_classify():
         if not ok:
             failed.append((q, expected, d.query_type))
 
-    if failed:
-        print(f"\n❌ {len(failed)} 个分类失败：")
-        for q, exp, got in failed:
-            print(f"   {q!r}  期望={exp.value}  实际={got.value}")
-        return False
+    assert not failed, (
+        f"❌ {len(failed)} 个分类失败："
+        + "; ".join(f"{q!r} 期望={exp.value} 实际={got.value}"
+                    for q, exp, got in failed)
+    )
     print(f"\n✅ 全部 {len(CLASSIFY_CASES)} 条分类通过\n")
-    return True
 
 
 # ---------------------------------------------------------------- 答案生成（含降级）
@@ -99,14 +112,17 @@ ANSWER_CASES = [
      "实时问题：天气降级路径"),
 
     ("大四还能转专业吗",
-     ["联系相关部门", "知识库"],
+     ["相关部门", "知识库"],
      ["DeepSeek"],
      "校园事务绝不能进 LLM"),
 
     ("什么是机器学习",
      [],
-     [],
-     "通识问题：LLM 没 key 时降级"),
+     # 兜底话术只许说"我答不上"，不许解释原因 ——
+     # "API key 没配""网络问题""预算用完""让管理员补语料"都是运维信息，
+     # 说给用户听只会让人以为整个服务坏了。
+     ["API key", "key 没配置", "网络问题", "预算额度", "管理员", "未配置"],
+     "通识问题：LLM 降级也不透技术细节"),
 ]
 
 
@@ -131,9 +147,10 @@ def test_answers_safety():
 
     if failed:
         print(f"\n❌ {len(failed)} 条答案检查失败")
-        return False
+        for q, d, must_have, must_not in failed:
+            print(f"   {q!r}  期望含: {must_have}  期望不含: {must_not}")
+        assert False, f"{len(failed)} 条答案检查失败"
     print(f"\n✅ 全部 {len(ANSWER_CASES)} 条安全栏检查通过\n")
-    return True
 
 
 # ---------------------------------------------------------------- 空输入
@@ -149,9 +166,9 @@ def test_empty():
         flag = "✓" if ok else "✗"
         print(f"  {flag} 输入={q!r:10s} → type={d.query_type.value}, "
               f"answer={d.answer!r}")
+        assert ok, f"空输入处理异常：{q!r} → {d!r}"
 
     print("\n✅ 空输入处理正常\n")
-    return True
 
 
 # ---------------------------------------------------------------- 端到端
@@ -208,8 +225,6 @@ def test_end_to_end():
     assert r5["fallback"]["source"] == "fixed_chat"
 
     print("\n✅ 端到端 5 条全部正常\n")
-    return True
-    return True
 
 
 # ---------------------------------------------------------------- 主流程
