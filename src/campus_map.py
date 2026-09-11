@@ -1,10 +1,24 @@
 # -*- coding: utf-8 -*-
-"""校园地图（纯前端，无需后端）— 方案 B：手绘地图图片叠加（底图，无标记）
+"""校园地图（纯前端，无需后端）— 自包含图片查看器（底图，无标记）
 
 实现：
-    - 两张手绘地图（天堂校区 / 仙林校区）作为各校区地图底图，用 Folium ImageOverlay 叠加。
-    - 图片以 base64 内嵌进地图 HTML，无需静态文件服务器（单进程部署 / HF Spaces 也能用）。
+    - 两张手绘地图（天堂校区 / 仙林校区）以 base64 内嵌进 HTML，无需静态文件服务器。
+    - 缩放 / 拖拽由原生 JS 实现，**零外部依赖**：不加载 Leaflet / jQuery / Bootstrap /
+      OSM 瓦片，因此完全离线的环境里也能正常显示与交互。
     - 当前仅展示手绘底图；POI 数据仍保留在 CAMPUSES 中，可按需恢复标记渲染。
+
+为什么不用 Folium / Leaflet（2026-09 修复）：
+    Folium 生成的 HTML 要向 cdn.jsdelivr.net、code.jquery.com 拉 Leaflet 等 12 个外部
+    资源，并向 tile.openstreetmap.org 请求瓦片。离线或受限网络下这些请求全部失败，
+    地图整块空白；而 iframe 内部脚本加载失败不会抛 Python 异常，旧代码的 try/except
+    兜底因此永远不触发。改为自包含实现后，离线 / Docker / HF Spaces 表现一致。
+
+首次切换不显示的坑（2026-09 修复）：
+    地图位于 st.tabs 的第二个 tab，未激活时面板是隐藏的。iframe 里的脚本此时执行，
+    wrap 的 clientWidth/Height 为 0；旧代码用 `||1` 兜底成 1x1，比例算成 1/图片宽，
+    图片被缩到 1 像素 —— 用户看到的就是"切到地图 tab 第一次加载不出来"。
+    现在改为：拿不到真实尺寸就不 fit，靠 requestAnimationFrame 重试 +
+    ResizeObserver 监听，等面板可见后再自适应。
 
 ⚠️ 数据来源说明：
     - campus["center"] 为校区地理中心（估算值，请按需校准，仅用于让地图默认落在正确城市区域）。
@@ -14,13 +28,10 @@
 from __future__ import annotations
 
 import base64
-import math
 import struct
 from pathlib import Path
 
-import folium
 import streamlit as st
-from folium.raster_layers import ImageOverlay
 
 _ASSET_DIR = Path(__file__).resolve().parent.parent / "assets" / "campus_maps"
 
@@ -118,6 +129,10 @@ def _jpeg_size(path: Path) -> tuple[int, int]:
     """纯标准库读取 JPEG 尺寸 (width, height)，避免引入 Pillow 依赖。
 
     非标准 JPEG 或读取失败时退回 4:3 比例，不影响地图渲染。
+
+    2026-09 修复：JPEG 段之间允许 0xFF 填充字节（标准允许），
+    旧逻辑遇到填充会把填充字节当 marker、把 marker 当长度高字节，
+    直接读到错误位置，宽高比静默退化为 4:3 导致地图被拉伸。
     """
     try:
         with path.open("rb") as f:
@@ -127,12 +142,22 @@ def _jpeg_size(path: Path) -> tuple[int, int]:
                 b = f.read(1)
                 while b and b != b"\xff":
                     b = f.read(1)
-                marker = f.read(1)
+                # 跳过连续的 0xFF 填充字节（标准 JPEG 段间填充）
+                while b == b"\xff":
+                    b = f.read(1)
+                marker = b
+                if not marker or marker == b"\xd9":  # EOI / EOF
+                    return 4, 3
                 if marker in (b"\xc0", b"\xc1", b"\xc2", b"\xc3"):
                     f.read(3)
                     h, w = struct.unpack(">HH", f.read(4))
                     return w, h
-                ln = struct.unpack(">H", f.read(2))[0]
+                ln_bytes = f.read(2)
+                if len(ln_bytes) < 2:
+                    return 4, 3
+                ln = struct.unpack(">H", ln_bytes)[0]
+                if ln < 2:
+                    return 4, 3
                 f.read(ln - 2)
     except Exception:
         return 4, 3
@@ -157,51 +182,137 @@ def _rel_to_latlon(bounds: list[list[float]], x: float, y: float) -> tuple[float
     return lat, lon
 
 
+# 自包含查看器模板：HTML + 原生 JS，**不引用任何外部资源**。
+# 图片以 base64 内嵌（__SRC__ 占位符），因此离线 / 无静态服务器也能显示与交互。
+_VIEWER_TEMPLATE = """
+<style>
+  .cm-wrap{position:relative;width:100%;height:500px;overflow:hidden;
+           background:#ececec;border:1px solid #d8d8d8;border-radius:10px;
+           cursor:grab;touch-action:none}
+  .cm-wrap.grabbing{cursor:grabbing}
+  .cm-img{position:absolute;left:0;top:0;transform-origin:0 0;
+          user-select:none;-webkit-user-drag:none;pointer-events:none}
+  .cm-bar{margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .cm-btn{border:1px solid #c9c9c9;background:#fff;border-radius:6px;
+          padding:4px 12px;font-size:13px;cursor:pointer;color:#333}
+  .cm-btn:hover{background:#f2f6ff}
+  .cm-tip{font-size:12px;color:#888}
+</style>
+<div class="cm-wrap" id="cm-wrap">
+  <img class="cm-img" id="cm-img" src="__SRC__" alt="校园地图">
+</div>
+<div class="cm-bar">
+  <button class="cm-btn" id="cm-zin">放大 ＋</button>
+  <button class="cm-btn" id="cm-zout">缩小 －</button>
+  <button class="cm-btn" id="cm-reset">重置</button>
+  <span class="cm-tip">滚轮缩放 · 按住拖动移动</span>
+</div>
+<script>
+(function(){
+  var wrap=document.getElementById('cm-wrap');
+  var img=document.getElementById('cm-img');
+  var scale=1,tx=0,ty=0;
+  var MIN=0.2,MAX=8;
+  var userMoved=false;   // 用户手动缩放/拖动后不再自动 fit，避免重置他的视角
+  function apply(){
+    img.style.transform='translate('+tx+'px,'+ty+'px) scale('+scale+')';
+  }
+  function fit(){
+    var cw=wrap.clientWidth, ch=wrap.clientHeight;
+    var iw=img.naturalWidth, ih=img.naturalHeight;
+    if(!cw||!ch||!iw||!ih) return false;   // 尺寸/图片还没就绪
+    scale=Math.min(cw/iw, ch/ih);
+    tx=(cw-iw*scale)/2; ty=(ch-ih*scale)/2;
+    apply();
+    return true;
+  }
+  // 首次加载的坑（2026-09 修复）：地图在 Streamlit 的 tab 里，未激活的
+  // 面板是隐藏的，此时 wrap 的 clientWidth/Height 为 0，图片也还没解码完。
+  // 旧代码写的是 `wrap.clientWidth||1`，于是按 1x1 的容器算比例，得到
+  // scale≈1/图片宽，图被缩成 1 像素——表现就是"切到地图 tab 第一次打不开"。
+  // 现在拿不到真实尺寸就**不 fit**，用 rAF + ResizeObserver 等到面板可见
+  // （或图片解码完）再 fit，因此首次切换、窗口缩放都能正确自适应。
+  var tries=0;
+  function fitWhenReady(){
+    if(userMoved) return;
+    if(fit()) return;
+    if(++tries>600) return;          // 约 10s 后放弃，后续交给 ResizeObserver
+    requestAnimationFrame(fitWhenReady);
+  }
+  if(img.complete){fitWhenReady();} else {img.onload=fitWhenReady;}
+  if(window.ResizeObserver){
+    new ResizeObserver(function(){ if(!userMoved) fit(); }).observe(wrap);
+  }
+  wrap.addEventListener('wheel',function(e){
+    e.preventDefault();
+    var r=wrap.getBoundingClientRect();
+    zoomAt(e.clientX-r.left, e.clientY-r.top, e.deltaY<0?1.15:1/1.15);
+  },{passive:false});
+  function zoomAt(cx,cy,f){
+    var ns=Math.min(MAX,Math.max(MIN,scale*f));
+    if(ns===scale) return;
+    userMoved=true;
+    var ix=(cx-tx)/scale, iy=(cy-ty)/scale;
+    scale=ns; tx=cx-ix*scale; ty=cy-iy*scale;
+    apply();
+  }
+  var drag=false,sx=0,sy=0;
+  wrap.addEventListener('mousedown',function(e){
+    drag=true; userMoved=true; sx=e.clientX-tx; sy=e.clientY-ty;
+    wrap.classList.add('grabbing');
+  });
+  window.addEventListener('mousemove',function(e){
+    if(!drag) return;
+    tx=e.clientX-sx; ty=e.clientY-sy; apply();
+  });
+  window.addEventListener('mouseup',function(){
+    drag=false; wrap.classList.remove('grabbing');
+  });
+  wrap.addEventListener('touchstart',function(e){
+    if(e.touches.length===1){
+      drag=true; userMoved=true; sx=e.touches[0].clientX-tx; sy=e.touches[0].clientY-ty;
+    }
+  },{passive:true});
+  wrap.addEventListener('touchmove',function(e){
+    if(!drag||e.touches.length!==1) return;
+    e.preventDefault();
+    tx=e.touches[0].clientX-sx; ty=e.touches[0].clientY-sy; apply();
+  },{passive:false});
+  wrap.addEventListener('touchend',function(){drag=false;});
+  document.getElementById('cm-zin').onclick=function(){
+    zoomAt(wrap.clientWidth/2, wrap.clientHeight/2, 1.3);
+  };
+  document.getElementById('cm-zout').onclick=function(){
+    zoomAt(wrap.clientWidth/2, wrap.clientHeight/2, 1/1.3);
+  };
+  // 重置 = 回到自动适配，并解除"用户已操作"锁定
+  document.getElementById('cm-reset').onclick=function(){userMoved=false; fit();};
+})();
+</script>
+"""
+
+
 @st.cache_resource(show_spinner="正在加载校园地图…")
-def _build_map(campus_key: str) -> folium.Map:
-    """构建并缓存单个校区的叠加地图（避免每次交互重绘时反复构建）。"""
+def _build_viewer_html(campus_key: str) -> str:
+    """生成自包含查看器 HTML（按校区缓存，避免重复做 base64 编码）。"""
     campus = CAMPUSES[campus_key]
     img_path = _ASSET_DIR / campus["image"]
-    clat, clon = campus["center"]
-    dlat = campus["span_lat"]
-
-    w, h = _jpeg_size(img_path)
-    # 保持图片宽高比：经度跨度按纬线缩放换算，避免手绘图被拉伸
-    dlon = dlat * (w / h) / math.cos(math.radians(clat))
-
-    south, north = clat - dlat / 2, clat + dlat / 2
-    west, east = clon - dlon / 2, clon + dlon / 2
-    bounds = [[south, west], [north, east]]
-
-    m = folium.Map(location=campus["center"], zoom_start=16, control_scale=True)
-    ImageOverlay(
-        image=_img_data_uri(img_path),
-        bounds=bounds,
-        opacity=1.0,
-        interactive=False,
-        cross_origin=False,
-        zindex=1,
-    ).add_to(m)
-    m.fit_bounds(bounds)
-    return m
+    return _VIEWER_TEMPLATE.replace("__SRC__", _img_data_uri(img_path))
 
 
 def render_campus_map() -> None:
     """在校园地图 tab 中渲染：校区切换 + 手绘地图底图（无标记）。"""
-    st.caption("手绘地图可缩放 / 拖拽；右上角可切换校区。")
+    st.caption("手绘地图支持滚轮缩放与拖动；可在下方切换校区。")
 
     campus_key = st.selectbox("选择校区", list(CAMPUSES.keys()), index=0, key="campus_select")
-    m = _build_map(campus_key)
-    # 用 st.components.v1.html 嵌入 Folium 生成的完整 HTML，
-    # 避免 streamlit-folium 自定义组件在 iframe/预览环境里加载失败。
-    # key 绑定校区：切换校区 / 切回 tab 时强制重挂载 iframe，避免 srcdoc 不刷新导致空白。
-    html = m.get_root().render()
+
     try:
-        st.components.v1.html(
-            html, height=520, scrolling=True, key=f"campus_map_{campus_key}"
-        )
+        # 自包含 HTML（图片 base64 内嵌、零外部请求），离线也能显示。
+        st.components.v1.html(_build_viewer_html(campus_key), height=560, scrolling=False)
     except Exception:
-        # 兜底：少数环境（如 AppTest 对带 key 的 components 支持不全）无法渲染 iframe，
-        # 直接显示手绘原图，保证地图始终可见、不会整片空白。
+        # 兜底：iframe 渲染失败时显示手绘原图，保证地图始终可见。
         img_path = _ASSET_DIR / CAMPUSES[campus_key]["image"]
-        st.image(str(img_path), caption=campus_key, use_container_width=True)
+        if img_path.exists():
+            st.image(str(img_path), caption=campus_key, use_container_width=True)
+        else:
+            st.warning(f"地图图片缺失：{img_path.name}")

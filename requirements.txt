@@ -40,8 +40,9 @@ uvicorn[standard]>=0.24.0
 
 # ---- W2 安全层（已无需新依赖，纯标准库）----
 
-# ---- 校园地图（Streamlit 交互地图，纯前端无后端依赖）----
-# 仅用 Folium 生成 HTML，再由 streamlit.components.v1.html 嵌入，无需 streamlit-folium
-folium>=0.15.0
+# ---- 校园地图（纯前端，无后端依赖）----
+# 2026-09 起改为自包含查看器：图片 base64 内嵌 + 原生 JS 实现缩放/拖拽。
+# 不再需要 folium —— Folium 生成的 HTML 要向 CDN 拉 Leaflet 等 12 个外部资源，
+# 离线或受限网络下地图整块空白。移除后镜像也更小。
 
 # pytest / httpx 仅开发/测试用，Docker 镜像里不需要（但装上也不影响）
