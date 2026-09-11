@@ -78,6 +78,54 @@ def _debug_mode() -> bool:
             return False
 
 
+# ---------------------------------------------------------------- 对话区滚动
+# 对话区是独立滚动容器（CSS 见 ui_style.py 的 .st-key-qa_history）。
+# 自己滚动的容器有个副作用：追加新消息时浏览器不会跟着走。
+# 页面重跑后 React 复用同一个 DOM 节点，scrollTop 保持不变，
+# 而 scrollHeight 变大了 —— 结果就是新回答在视口下方，用户看不到，
+# 得自己手动往下滚。所以要在新消息出现后把它滚到底。
+#
+# 关键点一：**必须带 <script> 标签**。components.html 不会替你补，
+#   少了标签这段 JS 就只是 iframe 里的一段纯文本，静默不执行
+#   （排查时表现为"代码明明写对了却没反应"，很费时间）。
+# 关键点二：这里刻意**用普通字符串 + replace 拼 count**，不用 f-string。
+#   脚本里全是 JS 的 `{}`（对象字面量），塞进 f-string 要写成 `{{}}`，
+#   改一次错一次（之前 ui_style.py 的 CSS 就栽在这上面，直接把页面搞白屏）。
+_AUTOSCROLL_JS = """
+<script>
+(function () {
+  var w = window.parent, doc = w.document;
+  var n = __COUNT__, prev = w.__qaScrollCount;
+  w.__qaScrollCount = n;
+
+  // 只在消息变多时滚。组件每次重跑都会重建 iframe，但计数挂在父窗口上，
+  // 跨重跑保留 —— 所以点「有用 / 重置 / 切 tab」这类重跑不会把
+  // 用户正在读的位置弹到底部。
+  if (prev !== undefined && n <= prev) return;
+
+  var el = doc.querySelector('[class*="st-key-qa_history"]');
+  if (!el) return;
+
+  var reduce = w.matchMedia && w.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var behavior = reduce ? 'auto' : 'smooth';
+
+  // 等两帧：第一帧让 Streamlit 把新消息的 DOM 挂上去，
+  // 第二帧 scrollHeight 才是最终值，否则会少滚一截。
+  w.requestAnimationFrame(function () {
+    w.requestAnimationFrame(function () {
+      el.scrollTo({ top: el.scrollHeight, behavior: behavior });
+    });
+  });
+})();
+</script>
+"""
+
+
+def _autoscroll_history(count: int) -> None:
+    """消息数变化时把对话区滚到底部（height=0 的隐藏 iframe，不占版面）。"""
+    components.html(_AUTOSCROLL_JS.replace("__COUNT__", str(count)), height=0)
+
+
 def render_candidates(r: dict) -> None:
     """调试模式下的候选列表（进度条 + 分数）。平时不显示。"""
     for c in r.get("candidates", []):
@@ -255,69 +303,93 @@ def main() -> None:
             st.caption("答案来自学校通知；知识库没有的会如实告诉你，不会编。")
 
         # ---------------------------------------------------------- 渲染对话
-        for i, (q, r) in enumerate(st.session_state.history):
-            with st.chat_message("user"):
-                st.write(q)
+        total = len(st.session_state.history)
 
-            with st.chat_message("assistant"):
+        # 整个对话区包进一个「限高 + 可垂直滚动」的容器
+        # （class="st-key-qa_history"，样式见 ui_style.py）。
+        # 不加这层的话：连续提问会让页面被无限顶长，输入框越推越远，
+        # 想回看上一轮还得整页滚动。加了之后对话区自己滚，页面其余部分不动。
+        with st.container(key="qa_history"):
+            for i, (q, r) in enumerate(st.session_state.history):
                 kind, source_line = source_of(r)
 
-                st.write(r["answer"])
+                # ---- 提问：靠右的气泡 ----
+                # key 生成 class="st-key-qa_ask_<i>"，ui_style.py 用
+                # margin-left:auto + width:fit-content 把它推到右侧。
+                # 不再做折叠：问答内容原样完整展示，想看哪轮滚动即可。
+                with st.container(key=f"qa_ask_{i}"):
+                    st.caption("提问")
+                    st.write(q)
 
-                # 来源：一行灰字，替代原来的彩色徽章 + 匹配度百分比
-                if source_line:
-                    st.caption(source_line)
+                # ---- 回答：靠左的气泡 ----
+                # 只有「正文 + 来源」进气泡；下面的候选问题按钮、调试信息、
+                # 反馈按钮留在气泡外，随时可点，不会被长回答挤到屏幕外面去。
+                with st.container(key=f"qa_answer_{i}"):
+                    st.caption("回答")
+                    st.write(r["answer"])
 
-                # 未命中时把候选题变成「你可能还想问」的可点按钮，
-                # 替代原来的「进度条 + 三位小数」——学生看不懂 0.872 是什么意思
-                if not r.get("matched") and r.get("candidates"):
-                    st.caption("你可能还想问")
-                    cands = r["candidates"][:3]
-                    cols = st.columns(len(cands))
-                    for col, c in zip(cols, cands):
-                        with col:
-                            key = f"cand_{i}_{c['question']}"
-                            if st.button(c["question"], key=key, use_container_width=True):
-                                st.session_state.pending_query = c["question"]
+                    # 来源：一行灰字，替代原来的彩色徽章 + 匹配度百分比
+                    if source_line:
+                        st.caption(source_line)
+
+                # ---- 该轮的附属操作（紧跟回答，左对齐、气泡外） ----
+                with st.container(key=f"qa_meta_{i}"):
+                    # 未命中时把候选题变成「你可能还想问」的可点按钮，
+                    # 替代原来的「进度条 + 三位小数」——学生看不懂 0.872 是什么意思
+                    if not r.get("matched") and r.get("candidates"):
+                        st.caption("你可能还想问")
+                        cands = r["candidates"][:3]
+                        cols = st.columns(len(cands))
+                        for col, c in zip(cols, cands):
+                            with col:
+                                key = f"cand_{i}_{c['question']}"
+                                if st.button(c["question"], key=key, use_container_width=True):
+                                    st.session_state.pending_query = c["question"]
+                                    st.rerun()
+
+                    # 调试信息：只在 ?debug=1 时出现
+                    if DEBUG:
+                        with st.expander("调试信息"):
+                            st.caption(
+                                f"trace_id: `{r.get('trace_id', 'n/a')}` ｜ "
+                                f"耗时 {r.get('latency_ms', 0):.0f} ms"
+                            )
+                            if r.get("matched"):
+                                st.caption(
+                                    f"命中意图 `{r.get('tag')}` ｜ "
+                                    f"相似度 {r.get('score', 0):.3f}"
+                                )
+                            else:
+                                st.caption(
+                                    f"未命中 ｜ 最高相似度 {r.get('score', 0):.3f}"
+                                    f"（阈值 {config.SIMILARITY_THRESHOLD}）"
+                                )
+                            render_candidates(r)
+
+                    # 反馈：用 toast，不在版面里残留「已收到反馈，我们会改进」
+                    fb_key = f"fb_{i}"
+                    if fb_key in st.session_state:
+                        st.caption("已反馈")
+                    else:
+                        # 横向容器：按钮按内容宽度排布。
+                        # 原来用 st.columns([0.9, 0.9, 8])，每个按钮只分到约 9%
+                        # 的行宽，装不下「有用」两个字（含内边距），于是标签被
+                        # 挤成竖排「有/用」；横向容器不做等分，不会挤压。
+                        with st.container(horizontal=True, gap="small"):
+                            if st.button("有用", key=f"up_{i}"):
+                                logger.log_feedback(r, "up")
+                                st.session_state[fb_key] = "up"
+                                st.toast("谢谢")
+                                st.rerun()
+                            if st.button("没用", key=f"down_{i}"):
+                                logger.log_feedback(r, "down")
+                                st.session_state[fb_key] = "down"
+                                st.toast("谢谢，我们会改进")
                                 st.rerun()
 
-                # 调试信息：只在 ?debug=1 时出现
-                if DEBUG:
-                    with st.expander("调试信息"):
-                        st.caption(
-                            f"trace_id: `{r.get('trace_id', 'n/a')}` ｜ "
-                            f"耗时 {r.get('latency_ms', 0):.0f} ms"
-                        )
-                        if r.get("matched"):
-                            st.caption(
-                                f"命中意图 `{r.get('tag')}` ｜ "
-                                f"相似度 {r.get('score', 0):.3f}"
-                            )
-                        else:
-                            st.caption(
-                                f"未命中 ｜ 最高相似度 {r.get('score', 0):.3f}"
-                                f"（阈值 {config.SIMILARITY_THRESHOLD}）"
-                            )
-                        render_candidates(r)
-
-                # 反馈：用 toast，不在版面里残留「已收到反馈，我们会改进」
-                fb_key = f"fb_{i}"
-                if fb_key in st.session_state:
-                    st.caption("已反馈")
-                else:
-                    c_up, c_down, _ = st.columns([0.9, 0.9, 8])
-                    with c_up:
-                        if st.button("有用", key=f"up_{i}"):
-                            logger.log_feedback(r, "up")
-                            st.session_state[fb_key] = "up"
-                            st.toast("谢谢")
-                            st.rerun()
-                    with c_down:
-                        if st.button("没用", key=f"down_{i}"):
-                            logger.log_feedback(r, "down")
-                            st.session_state[fb_key] = "down"
-                            st.toast("谢谢，我们会改进")
-                            st.rerun()
+        # 新消息出现后把对话区滚到底部（放在容器外，不占滚动内容）。
+        # 「清空对话」不在这里：它在容器外，长对话时也始终够得着。
+        _autoscroll_history(total)
 
         # ---------------------------------------------------------- 清空
         if st.session_state.history:

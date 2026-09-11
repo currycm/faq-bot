@@ -153,11 +153,17 @@ def test_theme_injected():
     for key in (
         "stHeader",           # 去顶部彩虹条
         "stFooter",           # 去 Made with Streamlit
-        "stChatMessage",      # 气泡去彩色背景
+        "st-key-qa_ask_",     # 提问气泡（靠右）
+        "st-key-qa_answer_",  # 回答气泡（靠左）
+        "st-key-qa_history",  # 对话区整体滚动容器
         "stSidebarCollapseButton",  # 去左上角收起栏
         "st-key-sugbar",      # 高频问题 chip 条
     ):
         assert key in css, f"CSS 里缺少针对 {key} 的覆盖规则"
+
+    # 左右分栏靠 margin 自动值实现（不依赖父级 flex，DOM 换版本不会静默失效）
+    assert "margin-left: auto" in css, "提问气泡没有靠右（缺 margin-left:auto）"
+    assert "margin-right: auto" in css, "回答气泡没有靠左（缺 margin-right:auto）"
 
     # 收起后按钮会换成 stExpandSidebarButton，只隐藏前者会漏
     assert "stExpandSidebarButton" in css, "侧边栏展开按钮没隐藏，收起后会冒出来"
@@ -230,6 +236,29 @@ def test_suggestions_above_input():
     )
 
     print(f"  推荐区位置正确（第 {sug_line + 1} 行 > 输入栏第 {chat_line + 1} 行），key={key}")
+
+
+def test_single_scroll_layer_and_no_collapse():
+    """防回归：滚动只保留最外层（对话区），单条消息不滚、问答也不折叠。
+
+    历史上踩过的坑：给提问/回答正文各加了 max-height + overflow-y:auto，
+    一屏里挂好几个滚动条，滚轮滚哪个得看光标位置，很难用。
+    """
+    from src import ui_style
+
+    assert ui_style._BOXES == ('[class*="st-key-qa_history"]',), (
+        "可滚动容器应只剩对话区一个，实际：" f"{ui_style._BOXES}"
+    )
+
+    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    for label in ('st.expander("提问"', 'st.expander("回答"'):
+        assert label not in src, f"问答仍被折叠（{label}），应改为完整展示"
+
+    # 左右分栏的容器 key 必须存在，否则 CSS 选不中
+    for key in ("qa_ask_", "qa_answer_"):
+        assert key in src, f"app.py 里没有 {key} 容器，气泡样式会静默失效"
+
+    print("  滚动仅一层，问答不再折叠")
 
 
 @requires_backend
