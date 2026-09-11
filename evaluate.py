@@ -49,9 +49,16 @@ def evaluate(bot: FaqBot, cases: list[dict], threshold: float | None = None):
     false_trigger = correct_reject = 0
     errors = []
 
-    for case in cases:
+    for i, case in enumerate(cases):
         q, expected = case["query"], case.get("expected_tag")
-        r = bot.ask(q)
+        # !! 每条样本必须用**独立身份**调用。
+        #    W2 安全层按 IP / user_id 分桶限流，空身份会落进共享兜底桶
+        #    （rate_limit._FALLBACK_KEY）。全用同一个身份连跑 120+ 条，
+        #    第 31 条起就会吃限流拒绝（IP 桶 capacity=30），返回值 matched=False，
+        #    在报表上表现为"未识别率 75%"这种假红灯 ——
+        #    实测 123 条里 93 条被拒，93/123 = 75.6%，和限流容量严丝合缝。
+        #    评估脚本不是"一个用户狂问 127 次"，给它独立身份才对得上真实语义。
+        r = bot.ask(q, user_id=f"eval-{i}", client_ip=f"10.0.{i // 250}.{i % 250 + 1}")
         top3_tags = [c["tag"] for c in r["candidates"]]
 
         if expected:                                   # 应回答
