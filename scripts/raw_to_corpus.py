@@ -288,7 +288,7 @@ def derive_tag(source: str, idx: int, notice_id: str) -> str:
     mid = notice_id.split("_", 1)[1]
     tag_map = {
         "jwc_001": "jwc_pe_select",
-        "jwc_002": "jwc_major_select",
+        "jwc_002": "jwc_major_elective_select",
         "jwc_003": "jwc_veteran_transfer",
         "jwc_004": "jwc_bachelor_degree",
         "xsc_001": "xsc_commute_apply",

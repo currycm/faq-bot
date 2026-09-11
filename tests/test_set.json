@@ -1,6 +1,6 @@
 {
   "meta": {
-    "version": "1.0.1",
+    "version": "1.0.2",
     "updated_at": "2026-09-11",
     "guideline": "测试问句必须与 data/qa_corpus.json 中的问法不同 —— 换同义词、改语序、加口语助词、故意写错别字。拿训练集当测试集，模型只是背下了答案，测出来 100% 准确率毫无意义。expected_tag 为 null 表示『这个问题机器人不该回答』，用于检查是否乱答。",
     "how_to_extend": "每次线上收集到未命中问题（见 logs/unmatched.jsonl），人工归纳后补充到语料，并在这里补 2-3 条改写问句。"
@@ -513,6 +513,30 @@
     {
       "query": "地图在哪里点开",
       "expected_tag": "campus_map_guide"
+    },
+    {
+      "query": "本学期的专业选修课要去哪个网站选",
+      "expected_tag": "jwc_major_elective_select"
+    },
+    {
+      "query": "专业选修课可以多选几门吗，要多交钱不",
+      "expected_tag": "jwc_major_elective_select"
+    },
+    {
+      "query": "专业选修课每学期都要重新选吗",
+      "expected_tag": "jwc_major_elective_select"
+    },
+    {
+      "query": "我现在这个专业不喜欢，还能换到别的专业去吗",
+      "expected_tag": "jwc_major_change"
+    },
+    {
+      "query": "想转专业的话要满足哪些要求",
+      "expected_tag": "jwc_major_change"
+    },
+    {
+      "query": "学校允许转专业吗，流程是啥",
+      "expected_tag": "jwc_major_change"
     }
   ]
 }
