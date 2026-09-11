@@ -26,12 +26,14 @@ from __future__ import annotations
 
 import os
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 
 from src import config, logger, ui_style
 from src.campus_map import render_campus_map
@@ -139,6 +141,9 @@ def api_ask(query: str, user_id: str) -> dict:
     """调 /ask（有后端时）或进程内直答（无后端时）。失败时返回错误 dict。"""
     if _USE_LOCAL_BOT:
         try:
+            # 2026-09 修复：进程内直连此前绕过了 AskRequest 的
+            # max_length=200 校验，超长 query 无人拦截。
+            query = (query or "").strip()[:200]
             return _get_bot().ask(query, user_id=user_id)
         except Exception as exc:
             return {
@@ -345,10 +350,14 @@ def main() -> None:
         if not query:
             query = st.session_state.pop("pending_query", None)
         if query:
+            # 2026-09 修复：此前所有前端用户共用 "streamlit_user" 这一个
+            # 限流身份，任一用户连续提问就能把全校挡在限流外面。
+            # 现在每个浏览器会话一个随机 user_id，用户维度互相隔离。
+            st.session_state.setdefault("user_id", uuid.uuid4().hex[:12])
             # LLM 兜底要 1~3 秒，spinner 让用户知道在处理。
             # 文案用中性的「查询中」而不是「正在思考…」——后者是拟人化 AI 味。
             with st.spinner("查询中"):
-                result = api_ask(query, user_id="streamlit_user")
+                result = api_ask(query, user_id=st.session_state.user_id)
             st.session_state.history.append((query, result))
             st.rerun()
 

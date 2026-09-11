@@ -105,10 +105,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS：开发时允许本地 Streamlit / 前端 HTML 调用
+# CORS：开发时允许本地 Streamlit / 前端 HTML 调用。
+# 2026-09 修复：删除 "*"（任意站点都能浏览器直调无鉴权接口、烧 LLM
+# 预算）。允许源统一由 config.CORS_ORIGINS（env FAQ_CORS_ORIGINS）控制。
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8510", "http://127.0.0.1:8510", "*"],
+    allow_origins=config.CORS_ORIGINS,
     allow_methods=["GET","POST"],
     allow_headers=["*"],
 )
@@ -166,11 +168,19 @@ def ask(req: AskRequest, request: Request):
         raise HTTPException(503, "bot not ready")
 
     trace_id = request.headers.get("X-Trace-Id") or str(uuid.uuid4())
-    client_ip = (
-        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-        or request.headers.get("X-Real-IP")
-        or (request.client.host if request.client else None)
-    )
+    # 2026-09 修复：X-Forwarded-For 第一段可被客户端任意伪造，
+    # 直接信任 = IP 限流与审计 IP 全部失效。现在只有在明确配置了
+    # TRUST_PROXY_HEADERS（API 只暴露在可信 nginx 后面）时才读代理
+    # 头；直连部署一律用真实 socket IP。配套 nginx 已改为
+    # `X-Forwarded-For $remote_addr`（覆盖而非追加客户端伪造值）。
+    if config.TRUST_PROXY_HEADERS:
+        client_ip = (
+            request.headers.get("X-Real-IP")
+            or request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            or (request.client.host if request.client else None)
+        )
+    else:
+        client_ip = request.client.host if request.client else None
 
     t0 = time.perf_counter()
     try:

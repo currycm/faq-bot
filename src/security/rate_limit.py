@@ -52,6 +52,16 @@ class _Bucket:
         return False
 
 
+# 空 key 统一落入的共享桶：未识别身份的请求也要被限速，
+# 而不是直接放行（否则无 XFF / 无 client 时等于无限流）。
+_FALLBACK_KEY = "__unidentified__"
+
+# 桶表容量上限：超过时淘汰最久未使用的桶，防止伪造 IP 撑爆内存。
+_MAX_BUCKETS = 10000
+# 超限时保留的比例（淘汰 20% 最旧的）
+_EVICT_KEEP_RATIO = 0.8
+
+
 class RateLimiter:
     """进程级令牌桶限流器。
 
@@ -62,34 +72,48 @@ class RateLimiter:
     """
 
     def __init__(self, capacity: int = 30, refill_rate: float = 0.5,
-                 name: str = "default"):
+                 name: str = "default",
+                 max_buckets: int = _MAX_BUCKETS):
         """构造限流器。
 
         :param capacity:   桶容量（突发上限）
         :param refill_rate: 每秒补充令牌数（稳态速率 = 1/refill_rate 秒一次）
         :param name:       限流器名（用于日志区分维度）
+        :param max_buckets: 桶表上限（防内存撑爆）
         """
         self.capacity = float(capacity)
         self.refill_rate = float(refill_rate)
         self.name = name
+        self.max_buckets = int(max_buckets)
         self._buckets: Dict[str, _Bucket] = {}
         self._lock = threading.Lock()  # 进程内并发安全
+
+    def _evict_if_needed(self) -> None:
+        """桶数超限时淘汰最久未使用的 20%（调用方需持有锁）。"""
+        if len(self._buckets) <= self.max_buckets:
+            return
+        keep = int(self.max_buckets * _EVICT_KEEP_RATIO)
+        oldest = sorted(self._buckets.items(),
+                        key=lambda kv: kv[1].last_refill)
+        for key, _ in oldest[:-keep]:
+            self._buckets.pop(key, None)
 
     def allow(self, key: Optional[str], cost: float = 1.0) -> bool:
         """检查 key 是否能通过。
 
-        :param key:  维度标识（IP / user_id）。None 或空串视为放行（未识别）。
+        :param key:  维度标识（IP / user_id）。None 或空串落入共享兜底桶，
+                     防止"身份都识别不到"的请求完全不受限。
         :param cost: 本次消耗的令牌数（默认 1）。
         :return:     True 放行 / False 拒绝
         """
-        if not key:
-            return True  # 未识别的请求放行（避免把正常流量挡掉）
+        key = key or _FALLBACK_KEY
 
         with self._lock:
             bucket = self._buckets.get(key)
             if bucket is None:
                 bucket = _Bucket(tokens=self.capacity, last_refill=time.time())
                 self._buckets[key] = bucket
+                self._evict_if_needed()
             return bucket.try_consume(cost, self.capacity, self.refill_rate)
 
     def reset(self, key: Optional[str] = None) -> None:
@@ -98,7 +122,7 @@ class RateLimiter:
             if key is None:
                 self._buckets.clear()
             else:
-                self._buckets.pop(key, None)
+                self._buckets.pop(key or _FALLBACK_KEY, None)
 
     def stats(self) -> dict:
         """查看限流器状态（监控用）。"""
@@ -112,7 +136,8 @@ class RateLimiter:
 
 
 # ===== 默认限流器（按需懒创建）=====
-# IP 维度：30 个桶，0.5 个/秒 → 平均 1 次/2秒，突发 30 个
+# 参数从 config 读取（2026-09 修复：此前写死导致 RATE_LIMIT_* 调了不生效）。
+# 延迟 import 避免 config 未加载时的循环依赖。
 _ip_limiter: Optional[RateLimiter] = None
 # user_id 维度：60 个桶，1 个/秒 → 平均 1 次/秒，突发 60 个
 _user_limiter: Optional[RateLimiter] = None
@@ -121,30 +146,49 @@ _user_limiter: Optional[RateLimiter] = None
 def get_ip_limiter() -> RateLimiter:
     global _ip_limiter
     if _ip_limiter is None:
-        _ip_limiter = RateLimiter(capacity=30, refill_rate=0.5, name="ip")
+        from .. import config
+        _ip_limiter = RateLimiter(
+            capacity=getattr(config, "RATE_LIMIT_IP_CAPACITY", 30),
+            refill_rate=getattr(config, "RATE_LIMIT_IP_REFILL", 0.5),
+            name="ip",
+        )
     return _ip_limiter
 
 
 def get_user_limiter() -> RateLimiter:
     global _user_limiter
     if _user_limiter is None:
-        _user_limiter = RateLimiter(capacity=60, refill_rate=1.0, name="user")
+        from .. import config
+        _user_limiter = RateLimiter(
+            capacity=getattr(config, "RATE_LIMIT_USER_CAPACITY", 60),
+            refill_rate=getattr(config, "RATE_LIMIT_USER_REFILL", 1.0),
+            name="user",
+        )
     return _user_limiter
 
 
 def check_rate_limit(ip: Optional[str], user_id: Optional[str]) -> tuple[bool, str]:
-    """双维度检查。返回 (是否通过, 拒绝原因)。"""
-    if not ip and not user_id:
-        return True, ""  # 都未识别，放行
+    """双维度检查。返回 (是否通过, 拒绝原因)。
 
+    2026-09 修复：
+    - ip / user_id 都为空时落入共享兜底桶（不再直接放行）；
+    - user 桶 key 绑定 IP（f"{ip}:{user_id}"），防止攻击者每次换一个
+      自选 user_id 绕过用户维度限流。
+    """
     if ip:
         limiter = get_ip_limiter()
         if not limiter.allow(ip):
             return False, f"IP {ip} 请求过快，请稍后再试"
     if user_id:
         limiter = get_user_limiter()
-        if not limiter.allow(user_id):
+        key = f"{ip}:{user_id}" if ip else user_id
+        if not limiter.allow(key):
             return False, f"用户 {user_id} 请求过快，请稍后再试"
+    if not ip and not user_id:
+        # 都未识别：共享兜底桶，防止"查不到身份"的请求完全不受限
+        limiter = get_ip_limiter()
+        if not limiter.allow(None):
+            return False, "请求过快，请稍后再试"
     return True, ""
 
 

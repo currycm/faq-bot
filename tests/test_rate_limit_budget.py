@@ -41,13 +41,15 @@ class TestRateLimiter:
         time.sleep(0.15)
         assert rl.allow("x")
 
-    def test_empty_key_passthrough(self):
+    def test_empty_key_shared_bucket(self):
+        """2026-09 修复：空 key / None 不再直接放行，落入共享兜底桶。
+
+        否则"身份识别不到"的请求（无 XFF、无 client）等于完全不受限。
+        """
         rl = RateLimiter(capacity=1, refill_rate=0.001)
-        # 空 key / None → 放行（不影响正常流量）
-        assert rl.allow("")
-        assert rl.allow(None)
-        assert rl.allow("")
-        assert rl.allow("")
+        assert rl.allow("")      # 第一次过
+        assert not rl.allow(None)  # 同一个共享桶，容量 1 → 拒
+        assert not rl.allow("")  # 依旧拒
 
     def test_stats(self):
         rl = RateLimiter(capacity=5, refill_rate=1.0, name="test")

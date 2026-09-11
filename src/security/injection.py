@@ -21,8 +21,24 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import List, Optional
+
+
+# === 归一化（2026-09 修复：零宽/全角/空格插入绕过） ===
+# 攻击者加一个 U+200B 或全角字符就能让所有正则失效。
+# 检测时原文 + 归一化文本双重匹配，任一命中即算命中。
+_ZERO_WIDTH_RE = re.compile(r"[​-‏‪-‮﻿]")
+_FOLD_RE = re.compile(r"[\s\-_.,·`'\"!！?？。，、；：:（）()\[\]{}<>「」『』]+")
+
+
+def _normalize(text: str) -> str:
+    """NFKC → 删零宽 → 折叠空白标点（"忽 略 之 前 的 指 令" → "忽略之前的指令"）。"""
+    text = unicodedata.normalize("NFKC", text)
+    text = _ZERO_WIDTH_RE.sub("", text)
+    text = _FOLD_RE.sub("", text)
+    return text
 
 
 # === 攻击模式 ===
@@ -40,8 +56,9 @@ _PATTERNS: List[tuple] = [
     # ----- 高风险：直接拒答 -----
     ("ignore_previous", re.compile(
         r"(?i)(?:忽略|无视|忘掉|丢弃|disregard|ignore|forget|override)"
-        r"\s*(?:以上|之前|先前|前面|all|previous|prior|above|earlier)"
-        r"[\s\S]{0,40}(?:指令|命令|说明|提示|instruction|prompt|directive|rule)"
+        r"\s*(?:以上|之前|以前|先前|前面|上面|all|previous|prior|above|earlier)"
+        r"[\s\S]{0,40}(?:指令|命令|说明|提示|要求|设定|规矩|规则|约束"
+        r"|instruction|prompt|directive|rule|context)"
     ), "high"),
 
     ("role_hijack", re.compile(
@@ -55,7 +72,10 @@ _PATTERNS: List[tuple] = [
     ("system_prompt_leak", re.compile(
         r"(?i)(?:把系统提示|输出系统提示|打印.*?(?:prompt|提示词)"
         r"|show.*?system.*?prompt|reveal.*?prompt|泄露.*?提示词"
-        r"|把你的(?:system|系统).*?(?:给我|发我))"
+        r"|把你的(?:system|系统).*?(?:给我|发我)"
+        r"|(?:复述|重复|翻译).{0,12}(?:上面|之前|以上|前面)"
+        r".{0,12}(?:内容|指令|设定|提示|prompt)"
+        r"|(?:复述|重复).{0,12}(?:系统提示|系统设定|system\s*prompt|提示词))"
     ), "high"),
 
     # 模型控制符（ChatML / Llama / Alpaca 等协议）
@@ -108,6 +128,9 @@ _DEFAULT_REFUSAL = (
 def detect(query: Optional[str]) -> InjectionVerdict:
     """检测一条 query 是否包含 prompt injection 攻击。
 
+    2026-09 修复：原文 + 归一化文本（NFKC/去零宽/折叠空白标点）
+    双重匹配 —— 攻击者插零宽字符、全角字母、空格都无法绕过。
+
     异常策略：内部异常 → 返回 safe=True 的默认 verdict，
     确保检测模块本身不会把主流程搞挂。
     """
@@ -118,8 +141,12 @@ def detect(query: Optional[str]) -> InjectionVerdict:
         rules: List[str] = []
         highest_level = ""
 
+        variants = {query, _normalize(query)}
+
         for name, regex, level in _PATTERNS:
-            if regex.search(query):
+            if name in rules:
+                continue
+            if any(regex.search(v) for v in variants):
                 rules.append(name)
                 if level == "high":
                     highest_level = "high"

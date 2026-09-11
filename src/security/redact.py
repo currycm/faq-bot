@@ -20,16 +20,34 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
+
+
+# === 归一化（2026-09 修复：全角/零宽字符绕过） ===
+# NFKC 把全角数字/字母/＠ 转成半角，全角空格转普通空格；
+# 之后再删除零宽字符（U+200B 等），攻击者靠插字符绕过脱敏的路被封死。
+_ZERO_WIDTH_RE = re.compile(r"[​-‏‪-‮﻿]")
+_CONTROL_LINEBREAK_RE = re.compile(r"[\x00-\x08\x0e-\x1f]")
+
+
+def _normalize(text: str) -> str:
+    """匹配前的统一归一化：NFKC → 删零宽 → 删控制符。"""
+    text = unicodedata.normalize("NFKC", text)
+    text = _ZERO_WIDTH_RE.sub("", text)
+    text = _CONTROL_LINEBREAK_RE.sub("", text)
+    return text
 
 
 # === PII 模式定义 ===
 # 每条 (名称, regex, placeholder, validator)
 # validator: 可选函数，接收 match 后的字符串，返回 True 才算真命中
 #            用于银行卡 Luhn 校验、IPv4 范围校验，避免误伤长数字串
+# 注意：所有模式都跑在归一化之后的文本上。
 
-_MOBILE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
+# 手机号：允许中间出现空格/连字符（138-0013-8000、138 0013 8000 都是常见写法）
+_MOBILE_RE = re.compile(r"(?<!\d)1[3-9]\d(?:[\s-]?\d{4}){2}(?!\d)")
 # 身份证：18 位，最后一位可以是数字或 X/x
 _IDCARD_RE = re.compile(
     r"(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])"
@@ -37,10 +55,11 @@ _IDCARD_RE = re.compile(
 )
 # 邮箱
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-# 银行卡：16-19 位连续数字（不含分隔符），过 Luhn 校验
-_BANKCARD_RE = re.compile(r"(?<!\d)\d{16,19}(?!\d)")
-# URL
-_URL_RE = re.compile(r"(?i)\b(?:https?://|www\.)[^\s<>\"'，。；]+")
+# 银行卡：16-19 位数字，允许空格/连字符分隔（卡面打印格式），过 Luhn 校验
+_BANKCARD_RE = re.compile(r"(?<!\d)\d(?:[\s-]?\d){15,18}(?!\d)")
+# URL：含 hxxp 变体（常见规避写法）
+_URL_RE = re.compile(r"(?i)\b(?:https?|hxxps?|hxxp)://[^\s<>\"'，。；]+"
+                     r"|\bwww\.[^\s<>\"'，。；]+")
 # IPv4
 _IPV4_RE = re.compile(r"(?<!\d)(?:\d{1,3}\.){3}\d{1,3}(?!\d)")
 
@@ -76,7 +95,9 @@ def _looks_like_ipv4(s: str) -> bool:
 # (名称, regex, placeholder, validator) —— 顺序很重要，长模式优先
 _PATTERNS: List[tuple] = [
     ("身份证", _IDCARD_RE, "[身份证]", None),
-    ("银行卡", _BANKCARD_RE, "[银行卡]", _luhn_ok),
+    # 银行卡匹配串可能含空格/连字符，Luhn 校验前先去掉分隔符
+    ("银行卡", _BANKCARD_RE, "[银行卡]",
+     lambda m: _luhn_ok(re.sub(r"[\s-]", "", m))),
     ("邮箱", _EMAIL_RE, "[邮箱]", None),
     ("URL", _URL_RE, "[网址]", None),
     ("手机号", _MOBILE_RE, "[手机号]", None),
@@ -118,7 +139,9 @@ def redact(text: Optional[str]) -> RedactResult:
         return RedactResult(original=text or "", sanitized=text or "", hits=[])
 
     try:
-        sanitized = text
+        # 2026-09 修复：先在归一化文本上匹配（全角数字、全角 ＠、零宽字符
+        # 无法再绕过），sanitized 也输出归一化文本（全角→半角，无副作用）。
+        sanitized = _normalize(text)
         hits: List[str] = []
 
         for name, regex, placeholder, validator in _PATTERNS:

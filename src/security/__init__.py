@@ -99,14 +99,17 @@ def enforce_security(
 
         if verdict.blocked:
             # 记录攻击事件（用于审计）
+            # 2026-09 修复：query_preview 写脱敏后的文本，
+            # 攻击 payload 里夹带的手机号/邮箱不得原样落盘。
             if getattr(config, "SECURITY_LOG_ENABLED", True):
                 try:
+                    safe_preview = redact.redact(query or "").sanitized[:80]
                     logger.write_jsonl(config.LOG_PATH, {
                         "event": "security_injection_blocked",
                         "rules": verdict.rules,
                         "ip": ip,
                         "user_id": user_id,
-                        "query_preview": (query or "")[:80],
+                        "query_preview": safe_preview,
                     })
                 except Exception:
                     pass
@@ -115,7 +118,10 @@ def enforce_security(
                 refusal_text=getattr(config, "INJECTION_REFUSAL_TEXT", "")
                     or injection.get_refusal_text(),
                 reason="injection:" + ",".join(verdict.rules),
-                sanitized_query=query or "",
+                # 2026-09 修复：拦截时不再把原文当 sanitized 返回。
+                # 本字段语义是"可直接喂 LLM 的版本"，原文透传会给
+                # 未来的调用方留 PII 泄露口子。
+                sanitized_query="",
                 injection_rules=verdict.rules,
             )
         medium_rules = [r for r in verdict.rules if r]  # 全记，medium 也带上
@@ -133,10 +139,14 @@ def enforce_security(
             allowed=False,
             refusal_text=reason or "请求过快，请稍后再试",
             reason="rate_limit",
-            sanitized_query=query or "",
+            sanitized_query="",
         )
 
     # ----- 第三关：预算（budget，仅 LLM 调用时检查） -----
+    # 2026-09 修复：agent 主链路不再在路由之前查 budget（会把闲聊/
+    # 天气/校园事务这些零 LLM 成本的通道一起"熔断"，全站瘫痪）。
+    # budget 检查已下沉到 fallback/router 的 LLM 分支（真正调 LLM
+    # 前一刻）。本参数保留仅为兼容显式声明 will_call_llm 的调用方。
     budget_consumed = False
     if will_call_llm:
         try:
@@ -148,7 +158,7 @@ def enforce_security(
                 allowed=False,
                 refusal_text="系统繁忙，请稍后再试",
                 reason="budget:" + reason,
-                sanitized_query=query or "",
+                sanitized_query="",
             )
         budget_consumed = True
 
@@ -166,6 +176,8 @@ def enforce_security(
         pii_hits = []
 
     # 命中 PII 也写一条审计日志（方便统计"用户主动透露了多少敏感信息"）
+    # 2026-09 修复：query_preview 必须是脱敏后的文本——
+    # 刚检测出手机号，就把含手机号的原文写进日志，等于没脱。
     if pii_hits and getattr(config, "SECURITY_LOG_ENABLED", True):
         try:
             logger.write_jsonl(config.LOG_PATH, {
@@ -173,7 +185,7 @@ def enforce_security(
                 "hits": pii_hits,
                 "ip": ip,
                 "user_id": user_id,
-                "query_preview": (query or "")[:80],
+                "query_preview": sanitized[:80],
             })
         except Exception:
             pass

@@ -67,11 +67,21 @@ _REDACTED = "***"
 
 
 def _redact_string(s: str) -> str:
-    """扫一遍字符串，把里面的密钥形态全部替换掉。"""
+    """扫一遍字符串，把里面的密钥形态全部替换掉。
+
+    2026-09 修复：追加 PII 脱敏（手机号/身份证/邮箱等）。
+    此前只有密钥形态被脱敏，用户输入的手机号会原样写进 qa.log，
+    与"我们不能存"的设计目标矛盾。redact 模块自带全兜底、绝不抛。
+    """
     if not isinstance(s, str):
         return s
     for pattern, replacement in _KEY_PATTERNS:
         s = pattern.sub(replacement, s)
+    try:
+        from .security.redact import redact as _redact_pii
+        s = _redact_pii(s).sanitized
+    except Exception:
+        pass
     return s
 
 
@@ -111,13 +121,18 @@ def write_jsonl(path: Path, record: dict) -> None:
     """追加一行 JSON 到文件。任何写失败都不该影响主流程，所以吞掉异常。
 
     【v5】写入前强制 redact，即便调用方不小心塞了 Authorization 头也不会泄露。
+    2026-09 修复：json.dumps 对不可序列化对象（numpy 标量 / Path / 集合）
+    抛 TypeError，此前只捕获 OSError 会直接穿透——最坏情况是 500 处理器
+    里调它，让异常处理器自身再抛。现在 TypeError/ValueError 一并兜住，
+    序列化用 default=str 兜底。
     """
     try:
         safe_record = redact(record)
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(safe_record, ensure_ascii=False) + "\n")
-    except OSError as exc:
+            f.write(json.dumps(safe_record, ensure_ascii=False,
+                               default=str) + "\n")
+    except (OSError, TypeError, ValueError) as exc:
         print(f"[logger] 写日志失败（不影响问答）：{exc}")
 
 
@@ -247,22 +262,28 @@ def summarize_unmatched(limit: int = 20) -> list[dict]:
         return []
 
     counter: dict[str, dict] = {}
-    with open(config.UNMATCHED_PATH, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            q = rec.get("query", "").strip()
-            if not q:
-                continue
-            if q not in counter:
-                counter[q] = {"query": q, "count": 0, "top_guess": rec.get("top_guess"),
-                              "last_score": rec.get("score")}
-            counter[q]["count"] += 1
+    try:
+        with open(config.UNMATCHED_PATH, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                q = rec.get("query", "").strip()
+                if not q:
+                    continue
+                if q not in counter:
+                    counter[q] = {"query": q, "count": 0,
+                                  "top_guess": rec.get("top_guess"),
+                                  "last_score": rec.get("score")}
+                counter[q]["count"] += 1
+    except OSError:
+        # 2026-09 修复：与 summarize_feedback 保持一致，
+        # 文件被删/无权限时不把异常抛给调用方（运维面板）。
+        return []
 
     return sorted(counter.values(), key=lambda x: -x["count"])[:limit]
 

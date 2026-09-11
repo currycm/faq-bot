@@ -34,20 +34,31 @@ from typing import Deque, Optional
 
 @dataclass
 class _Window:
-    """滑动窗口：固定长度的请求时间戳队列。"""
-    timestamps: Deque[float] = field(default_factory=deque)
+    """滑动窗口：请求 (时间戳, 成本) 队列。
 
-    def count_in(self, window_sec: float) -> int:
+    2026-09 修复：只存时间戳导致成本熔断形同虚设（成本永远按估算
+    次数×平均价线性增长，永远撞不到独立阈值）。现在每次记录带真实
+    成本，次数与成本两个指标真正解耦。
+    """
+    events: Deque[tuple] = field(default_factory=deque)
+
+    def _prune(self, window_sec: float) -> None:
         now = time.time()
         cutoff = now - window_sec
-        dq = self.timestamps
-        # 弹出过期的
-        while dq and dq[0] < cutoff:
+        dq = self.events
+        while dq and dq[0][0] < cutoff:
             dq.popleft()
-        return len(dq)
 
-    def record(self) -> None:
-        self.timestamps.append(time.time())
+    def count_in(self, window_sec: float) -> int:
+        self._prune(window_sec)
+        return len(self.events)
+
+    def cost_in(self, window_sec: float) -> float:
+        self._prune(window_sec)
+        return sum(cost for _ts, cost in self.events)
+
+    def record(self, cost_cny: float = 0.0) -> None:
+        self.events.append((time.time(), float(cost_cny)))
 
 
 class BudgetGuard:
@@ -90,6 +101,13 @@ class BudgetGuard:
 
         :param estimated_cost_cny: 本次调用的估算成本（默认按 avg_cost_per_call）
         :return: (是否放行, 拒绝原因)
+
+        2026-09 修复：成本按窗口内**已记录的真实成本**累计判断，
+        不再用 (calls+1)×avg 估算 —— 旧逻辑在默认参数下成本熔断
+        永远不可达（500 次上限先到），"双指标"实为单指标。
+        注意：本方法只检查不记录，调用方应在 LLM 真正发生后
+        record()。为缩小 TOCTOU 窗口，应把 check 放在 LLM 调用前
+        一刻（见 fallback/router.py）。
         """
         try:
             cost = estimated_cost_cny if estimated_cost_cny is not None else self.avg_cost_per_call
@@ -100,11 +118,11 @@ class BudgetGuard:
                         f"调用次数熔断：{self.window_sec:.0f}s 内已调用 {calls} 次，"
                         f"超过上限 {self.max_calls}"
                     )
-                estimated_total = (calls + 1) * cost
-                if estimated_total >= self.max_cost_cny:
+                total_cost = self._window.cost_in(self.window_sec)
+                if total_cost + cost >= self.max_cost_cny:
                     return False, (
-                        f"成本熔断：{self.window_sec:.0f}s 内估算成本 ¥{estimated_total:.2f}，"
-                        f"超过上限 ¥{self.max_cost_cny:.2f}"
+                        f"成本熔断：{self.window_sec:.0f}s 内已花费 ¥{total_cost:.4f}，"
+                        f"接近上限 ¥{self.max_cost_cny:.2f}"
                     )
             return True, ""
         except Exception as exc:
@@ -112,10 +130,15 @@ class BudgetGuard:
             return True, f"budget_check_error:{exc}"
 
     def record(self, actual_cost_cny: Optional[float] = None) -> None:
-        """记录一次调用（仅在调用真正发生后调用，避免假阳性）。"""
+        """记录一次调用（仅在调用真正发生后调用，避免假阳性）。
+
+        :param actual_cost_cny: 本次调用的真实成本（元）。
+                                None 时按 avg_cost_per_call 估算。
+        """
         try:
+            cost = actual_cost_cny if actual_cost_cny is not None else self.avg_cost_per_call
             with self._lock:
-                self._window.record()
+                self._window.record(cost)
         except Exception:
             pass
 
@@ -127,6 +150,7 @@ class BudgetGuard:
                 "name": self.name,
                 "window_sec": self.window_sec,
                 "calls_in_window": calls,
+                "cost_in_window": round(self._window.cost_in(self.window_sec), 6),
                 "max_calls": self.max_calls,
                 "max_cost_cny": self.max_cost_cny,
                 "is_open": calls >= self.max_calls,
@@ -135,7 +159,7 @@ class BudgetGuard:
     def reset(self) -> None:
         """清空窗口（测试 / 运维手动重置用）。"""
         with self._lock:
-            self._window.timestamps.clear()
+            self._window.events.clear()
             self._last_trip_at = None
 
 
@@ -146,13 +170,14 @@ _budget: Optional[BudgetGuard] = None
 def get_budget() -> BudgetGuard:
     global _budget
     if _budget is None:
-        # 默认：1 小时 500 次 / 10 元
-        # 调小可保护新人账号，调大可扛量。运维通过环境变量覆盖。
+        # 2026-09 修复：从 config 读取（此前写死导致 BUDGET_* 调了不生效）。
+        # 默认：1 小时 500 次 / 10 元。
+        from .. import config
         _budget = BudgetGuard(
-            window_sec=3600,
-            max_calls=500,
-            max_cost_cny=10.0,
-            avg_cost_per_call=0.01,
+            window_sec=getattr(config, "BUDGET_WINDOW_SEC", 3600),
+            max_calls=getattr(config, "BUDGET_MAX_CALLS", 500),
+            max_cost_cny=getattr(config, "BUDGET_MAX_COST_CNY", 10.0),
+            avg_cost_per_call=getattr(config, "BUDGET_AVG_COST_CNY", 0.01),
             name="llm",
         )
     return _budget

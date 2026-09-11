@@ -41,6 +41,25 @@ jobs:
           pip install ruff
           ruff check .
 
+      # 2026-09 修复：test_ui.py 的集成测试依赖 8000 端口的 API 服务，
+      # 此前 CI 只跑 pytest -q、不启动服务，那 6 个测试在 CI 上永远
+      # skip，"128 个测试"虚高。现在先拉起 uvicorn 再跑测试。
+      - name: Start API server
+        env:
+          HF_HUB_DISABLE_PROGRESS_BARS: "1"
+        run: |
+          nohup uvicorn api:app --host 127.0.0.1 --port 8000 > /tmp/api.log 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -sf http://127.0.0.1:8000/health | grep -q '"status":"ok"'; then
+              echo "API ready after ${i} tries"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::API failed to start"
+          cat /tmp/api.log
+          exit 1
+
       - name: Run tests
         env:
           HF_HUB_DISABLE_PROGRESS_BARS: "1"

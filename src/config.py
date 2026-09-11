@@ -230,6 +230,10 @@ DEEPSEEK_MODEL = "deepseek-chat"             # 备选: deepseek-reasoner (R1，�
 DEEPSEEK_TIMEOUT = 8                        # 秒，超时直接降级
 DEEPSEEK_TEMPERATURE = 0.3                  # 低温度 → 回答更确定、更少幻觉
 DEEPSEEK_MAX_TOKENS = 256                   # 单次回答上限
+# 2026-09 新增：成本熔断按真实 usage 累计（元 / 百万 token）。
+# 默认取 deepseek-chat 官方价附近，换模型/调价时改这里。
+DEEPSEEK_INPUT_PRICE_PER_MTOK = 1.0        # 输入 ¥/1M tokens
+DEEPSEEK_OUTPUT_PRICE_PER_MTOK = 2.0       # 输出 ¥/1M tokens
 
 # DeepSeek 的系统提示 —— 这是防幻觉的第一道防线。
 # !! 改这段话时请三思：写得越宽，LLM 越容易编校务。
@@ -314,7 +318,9 @@ CAMPUS_KEYWORDS = [
     # 生活服务
     "食堂", "餐厅", "超市", "浴室", "开水", "洗衣机",
     # 通用校园词
-    "学校", "学院", "系", "专业", "教务处", "学工处", "后勤", "校医院",
+    # 2026-09 修复：删除单字"系"（误伤"关**系**/体**系**/**系**统"）
+    # 和"专业"（误伤"专业英语"）；"转专业"已在上方教学类覆盖。
+    "学校", "学院", "教务处", "学工处", "后勤", "校医院",
     "医保", "报销", "校历",
     # 学校标志 / 文化
     "校庆", "校训", "校歌", "校徽", "校风",
@@ -397,3 +403,22 @@ BUDGET_AVG_COST_CNY = 0.01
 
 # 高风险注入命中时的日志记录（用于审计"有谁在攻击我的机器人"）
 SECURITY_LOG_ENABLED = True
+
+
+# ---------------------------------------------------------------- 部署安全（2026-09）
+# CORS 允许源：逗号分隔，通过环境变量 FAQ_CORS_ORIGINS 覆盖。
+# 2026-09 修复：删除 "*"（任意站点都能直调无鉴权接口、烧 LLM 预算）。
+CORS_ORIGINS = [
+    o.strip() for o in
+    os.environ.get("FAQ_CORS_ORIGINS",
+                   "http://localhost:8510,http://127.0.0.1:8510").split(",")
+    if o.strip()
+]
+
+# 是否信任反向代理转发的客户端 IP 头（X-Real-IP / X-Forwarded-For）。
+# 2026-09 修复：XFF 第一段可被客户端任意伪造，直接信任 = IP 限流失效。
+# 仅当 API 只暴露在可信反代（nginx）后面时才打开；直连部署必须保持 False。
+# 配套 nginx 配置已改为 `X-Forwarded-For $remote_addr`（覆盖而非追加）。
+TRUST_PROXY_HEADERS = (
+    os.environ.get("FAQ_TRUST_PROXY_HEADERS", "").lower() in ("1", "true", "yes")
+)
