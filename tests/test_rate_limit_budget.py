@@ -165,6 +165,29 @@ class TestBudgetGuard:
         assert s["max_calls"] == 5
         assert s["is_open"] is False
 
+    def test_stats_is_open_on_cost(self):
+        """成本维度触顶时 stats 的 is_open 也必须为 True。
+
+        2026-09 修复：is_open 此前只看次数，成本先爆时监控面板仍显示关闭。
+        stats 语义是"下一次 check 会不会被挡"，故用 cost + avg_cost 判定
+        （与 check 的 total + cost 口径一致）。
+        """
+        # max_cost=0.05、avg_cost=0.02：记 3 次累计 0.06，已超上限
+        bg = BudgetGuard(window_sec=60, max_calls=1000, max_cost_cny=0.05,
+                        avg_cost_per_call=0.02, name="t")
+        for _ in range(3):
+            bg.record()
+        s = bg.stats()
+        assert s["calls_in_window"] == 3
+        assert s["is_open"] is True
+
+    def test_stats_is_open_on_calls(self):
+        """次数维度触顶时 is_open 也为 True（与成本分支互补）。"""
+        bg = BudgetGuard(window_sec=60, max_calls=2, max_cost_cny=100.0, name="t")
+        for _ in range(2):
+            bg.record()
+        assert bg.stats()["is_open"] is True
+
     def test_never_raises(self):
         """即使数据极端也不该抛。"""
         bg = BudgetGuard(window_sec=60, max_calls=1, max_cost_cny=0.01,

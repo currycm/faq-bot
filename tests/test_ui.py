@@ -175,7 +175,7 @@ def test_theme_injected():
 def test_debug_hidden_by_default():
     """防回归：默认不能出现调试字段（trace_id / 相似度 / 候选分数）。
 
-    这些是给开发排查用的，加 ?debug=1 才该显示。
+    这些是给开发排查用的，设 FAQ_DEBUG=1 才该显示。
     """
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=300)
     at.run()
@@ -187,6 +187,32 @@ def test_debug_hidden_by_default():
         assert noise not in combined, f"默认界面不该出现调试字段 {noise!r}"
 
     print("  调试信息默认已隐藏")
+
+
+@requires_backend
+def test_debug_shown_when_enabled():
+    """正向：设 FAQ_DEBUG=1 时调试面板必须出现。
+
+    2026-09 修复：此前只有上面那条负向断言（默认不出现），
+    _DEBUG_ENABLED 逻辑写反、永远 False 也测不出来 —— 补这条互补。
+    FAQ_DEBUG 是进程环境变量，run 前设好、finally 里清掉。
+    （不用 monkeypatch：本文件支持 `python tests/test_ui.py` 直跑，
+      直接调用时拿不到 fixture。）
+    """
+    import os
+
+    os.environ["FAQ_DEBUG"] = "1"
+    try:
+        at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=300)
+        at.run()
+        at.chat_input[0].set_value("图书馆几点开门").run()
+
+        combined = _main_text(at)
+        assert "trace_id" in combined, "FAQ_DEBUG=1 时调试面板未出现"
+    finally:
+        os.environ.pop("FAQ_DEBUG", None)
+
+    print("  FAQ_DEBUG=1 时调试信息已显示")
 
 
 def test_suggestions_above_input():
@@ -300,6 +326,7 @@ if __name__ == "__main__":
     test_source_lines()
     test_no_badge_html()
     test_debug_hidden_by_default()
+    test_debug_shown_when_enabled()
     test_feedback_button()
     print("=" * 60)
     print("  前端测试全部通过")

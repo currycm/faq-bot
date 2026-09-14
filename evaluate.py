@@ -174,6 +174,11 @@ def main() -> None:
     print(f"索引：{s['intents']} 个意图 / {s['questions']} 条问法"
           f"   向量化：{s['vectorizer']}   构建耗时 {s['build_ms']:.1f} ms")
 
+    if config.ENABLE_RERANK:
+        print("\n!! ENABLE_RERANK=True：命中判定走 RERANK_THRESHOLD（精排分），"
+              "--threshold / --scan 调的是余弦阈值，对结果没有影响。")
+        print("   标定精排阈值：临时改 config.RERANK_THRESHOLD 后重跑本脚本。\n")
+
     if args.scan:
         scan_threshold(bot, cases)
         return

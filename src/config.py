@@ -187,7 +187,21 @@ CUSTOM_WORDS = [
 SIMILARITY_THRESHOLD = 0.60
 
 TOP_K = 3                    # 召回候选数量
-ENABLE_RERANK = False        # 是否启用 L4 精排（v2 再打开）
+ENABLE_RERANK = False        # 是否启用 L4 精排（默认关，见下方说明）
+
+# ---- 精排（ENABLE_RERANK=True 时生效）----
+# 2026-09 修复：默认模型从英文的 cross-encoder/mmarco-mMiniLMv2 换成
+# 中文可用的 BAAI/bge-reranker-base —— 旧模型对中文 query 和候选基本
+# 打不出区分度。首次启用会联网下载约 1.1GB；CPU 单对打分 ~100-300ms，
+# TOP_K=3 时每次 ask 多花约 0.3-1s。封闭集已 100% 命中，精排的价值
+# 在易混淆/长尾意图，需用更大的评测集验证。
+RERANK_MODEL_NAME = "BAAI/bge-reranker-base"
+
+# !! 精排分（sigmoid 后 0~1 的相关性分）与余弦相似度**不是同一量纲**。
+#    启用精排后命中判定改走这个阈值，SIMILARITY_THRESHOLD 不再生效；
+#    evaluate.py 的 --threshold / --scan 调的是余弦阈值，对精排无效。
+#    0.5 只是占位 —— 打开后必须标定：临时改这个值重跑 evaluate.py 观察。
+RERANK_THRESHOLD = 0.5
 
 
 # ---------------------------------------------------------------- 兜底配置 v4
@@ -411,6 +425,17 @@ BUDGET_MAX_CALLS = 500
 BUDGET_MAX_COST_CNY = 10.0
 # 每次调用平均成本（粗算），用于触发成本熔断
 BUDGET_AVG_COST_CNY = 0.01
+
+# ---- 可选：分布式限流 / 预算（2026-09 新增，多 worker 精确计数）----
+# 设 FAQ_REDIS_URL（如 redis://127.0.0.1:6379/0）后，令牌桶与成本熔断的
+# 状态存进 Redis，gunicorn 多 worker / 多实例共享一份计数，额度不再随
+# worker 数翻倍（README「已知限制」）。
+# 未设置、Redis 连不上时：自动退回进程内实现（行为与旧版一致），
+# 限流照常生效，只是退化为每 worker 独立计数。
+REDIS_URL = os.environ.get("FAQ_REDIS_URL", "").strip()
+# Redis 操作超时（秒）。故意很短：Redis 卡顿时宁可退回进程内计数，
+# 也不能让每个请求都干等它。
+REDIS_TIMEOUT = 1.0
 
 # 高风险注入命中时的日志记录（用于审计"有谁在攻击我的机器人"）
 SECURITY_LOG_ENABLED = True

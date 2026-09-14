@@ -44,6 +44,9 @@ services:
       #   不设（0）时走 nginx 上线会让全校共用一个 IP 限流桶，正常流量互相误伤。
       - FAQ_CORS_ORIGINS=${FAQ_CORS_ORIGINS:-http://localhost:8501,http://127.0.0.1:8501}
       - FAQ_TRUST_PROXY_HEADERS=${FAQ_TRUST_PROXY_HEADERS:-0}
+      # 多 worker 精确限流 / 预算（可选）：设了才启用，redis 服务见文件末尾注释。
+      # 未设置时自动退回进程内计数（额度 ≈ worker 数 × 配置值）。
+      # - FAQ_REDIS_URL=redis://redis:6379/0
     secrets:
       - deepseek_key
       - hefeng_key
@@ -73,3 +76,9 @@ secrets:
     file: ./secrets/deepseek_key.txt
   hefeng_key:
     file: ./secrets/hefeng_key.txt
+
+# 可选：分布式限流 / 预算熔断的共享状态存储。
+# 取消 api 服务里 FAQ_REDIS_URL 那行注释 + 取消本服务注释即可启用。
+# redis:
+#   image: redis:7-alpine
+#   restart: unless-stopped

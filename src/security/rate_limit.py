@@ -27,6 +27,7 @@
 """
 from __future__ import annotations
 
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -138,31 +139,49 @@ class RateLimiter:
 # ===== 默认限流器（按需懒创建）=====
 # 参数从 config 读取（2026-09 修复：此前写死导致 RATE_LIMIT_* 调了不生效）。
 # 延迟 import 避免 config 未加载时的循环依赖。
-_ip_limiter: Optional[RateLimiter] = None
+_ip_limiter = None
 # user_id 维度：60 个桶，1 个/秒 → 平均 1 次/秒，突发 60 个
-_user_limiter: Optional[RateLimiter] = None
+_user_limiter = None
 
 
-def get_ip_limiter() -> RateLimiter:
+def _build_limiter(name: str, capacity: int, refill_rate: float):
+    """构造限流器：设了 FAQ_REDIS_URL 优先 Redis（多 worker 共享计数），
+    初始化失败退回进程内实现。返回对象都有 allow/reset/stats 接口。
+    """
+    from .. import config
+    if getattr(config, "REDIS_URL", ""):
+        try:
+            from .redis_backend import RedisRateLimiter
+            return RedisRateLimiter(
+                config.REDIS_URL, capacity=capacity, refill_rate=refill_rate,
+                name=name, socket_timeout=getattr(config, "REDIS_TIMEOUT", 1.0),
+            )
+        except Exception as exc:
+            print(f"[rate_limit] ⚠️ Redis 限流器初始化失败，退回进程内实现：{exc}",
+                  file=sys.stderr)
+    return RateLimiter(capacity=capacity, refill_rate=refill_rate, name=name)
+
+
+def get_ip_limiter():
     global _ip_limiter
     if _ip_limiter is None:
         from .. import config
-        _ip_limiter = RateLimiter(
-            capacity=getattr(config, "RATE_LIMIT_IP_CAPACITY", 30),
-            refill_rate=getattr(config, "RATE_LIMIT_IP_REFILL", 0.5),
-            name="ip",
+        _ip_limiter = _build_limiter(
+            "ip",
+            getattr(config, "RATE_LIMIT_IP_CAPACITY", 30),
+            getattr(config, "RATE_LIMIT_IP_REFILL", 0.5),
         )
     return _ip_limiter
 
 
-def get_user_limiter() -> RateLimiter:
+def get_user_limiter():
     global _user_limiter
     if _user_limiter is None:
         from .. import config
-        _user_limiter = RateLimiter(
-            capacity=getattr(config, "RATE_LIMIT_USER_CAPACITY", 60),
-            refill_rate=getattr(config, "RATE_LIMIT_USER_REFILL", 1.0),
-            name="user",
+        _user_limiter = _build_limiter(
+            "user",
+            getattr(config, "RATE_LIMIT_USER_CAPACITY", 60),
+            getattr(config, "RATE_LIMIT_USER_REFILL", 1.0),
         )
     return _user_limiter
 

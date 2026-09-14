@@ -31,6 +31,9 @@ class Hit:
     answer: str       # 对应答案
     tag: str          # 意图标签
     score: float      # 余弦相似度
+    # 精排分（sigmoid 后 0~1）。仅 ENABLE_RERANK=True 时由 ranker 填写；
+    # 与 score 不同量纲，命中判定走 config.RERANK_THRESHOLD（见 ranker.py）
+    rerank_score: float | None = None
 
 
 class Retriever:

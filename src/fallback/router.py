@@ -104,7 +104,11 @@ def _answer_realtime(query: str) -> tuple[str, str]:
                               "穿什么", "热不热", "冷不冷", "晴", "阴",
                               "云", "雾", "霾", "天气预报"]):
         # !! 必须把城市传进去，否则「北京天气」会回答成默认城市（config.HEFENG_CITY）
-        ans = weather.format_answer(weather.extract_city(query))
+        # 2026-09 新增：问句带「明天/后天」时走 3d 预报接口——此前预报问题
+        # 一律答实况，「明天会下雨吗」回答今天的天气，比接口挂掉更迷惑。
+        ans = weather.format_answer(
+            weather.extract_city(query), day=weather.detect_forecast_day(query)
+        )
         return ans, "weather"
 
     # 其它实时类（校历日期/课表）暂未接入，TODO

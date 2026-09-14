@@ -32,6 +32,9 @@ import struct
 from pathlib import Path
 
 import streamlit as st
+# 显式 import 模块再调用，而非 `st.components.v1.html(...)` 穿透式取属性——
+# 后者是官方文档标注的 deprecated 写法（1.51.0 尚不告警，但注明后续会禁用）。
+import streamlit.components.v1 as components
 
 _ASSET_DIR = Path(__file__).resolve().parent.parent / "assets" / "campus_maps"
 
@@ -308,7 +311,7 @@ def render_campus_map() -> None:
 
     try:
         # 自包含 HTML（图片 base64 内嵌、零外部请求），离线也能显示。
-        st.components.v1.html(_build_viewer_html(campus_key), height=560, scrolling=False)
+        components.html(_build_viewer_html(campus_key), height=560, scrolling=False)
     except Exception:
         # 兜底：iframe 渲染失败时显示手绘原图，保证地图始终可见。
         img_path = _ASSET_DIR / CAMPUSES[campus_key]["image"]

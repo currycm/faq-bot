@@ -243,7 +243,14 @@ class FaqBot:
 
         best = hits[0] if hits else None
         best_score = best.score if best else 0.0
-        matched = bool(best is not None and best_score >= self.threshold)
+        rerank_score = best.rerank_score if best is not None else None
+        # 2026-09 修复：精排启用时命中判定走精排分 + RERANK_THRESHOLD
+        # （与余弦阈值不同量纲，见 ranker.py 模块注释）；
+        # result.score 始终是余弦相似度，精排分单独放 rerank_score 字段。
+        if rerank_score is not None:
+            matched = rerank_score >= config.RERANK_THRESHOLD
+        else:
+            matched = bool(best is not None and best_score >= self.threshold)
 
         # 用于汇总的 pii_hits 与 injection_rules
         all_pii_hits = list(sec_pre.pii_hits)
@@ -290,6 +297,7 @@ class FaqBot:
             "matched": matched,
             "tag": best.tag if matched else None,
             "score": round(best_score, 4),
+            "rerank_score": round(rerank_score, 4) if rerank_score is not None else None,
             "matched_question": best.question if matched else None,
             "top_guess": best.tag if best else None,
             "latency_ms": round((time.perf_counter() - t0) * 1000, 2),
@@ -301,7 +309,10 @@ class FaqBot:
                 "injection_rules": all_injection_rules,
             },
             "candidates": [{"question": h.question, "tag": h.tag,
-                            "score": round(h.score, 4)} for h in hits],
+                            "score": round(h.score, 4),
+                            "rerank_score": (round(h.rerank_score, 4)
+                                             if h.rerank_score is not None else None)}
+                           for h in hits],
             "user_id": user_id,
             "trace_id": trace_id,
             "client_ip": client_ip,

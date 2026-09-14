@@ -119,6 +119,21 @@ def extract_city(query: str) -> Optional[str]:
     return None
 
 
+def detect_forecast_day(query: str) -> Optional[str]:
+    """识别问句指向的未来日期，返回 "明天" / "后天"；None 表示问的是现在。
+
+    只接和风 3d 预报（今天 + 未来两天），"周末""下周"等更远的日期
+    不支持 —— 宁可按实况回答，也不硬编日期。
+    """
+    if not query:
+        return None
+    if "后天" in query:          # "明后天" 也命中这里
+        return "后天"
+    if "明天" in query:
+        return "明天"
+    return None
+
+
 @dataclass
 class WeatherResult:
     city: str
@@ -134,6 +149,23 @@ class WeatherResult:
             f"{self.city}当前天气：{self.weather}，"
             f"气温 {self.temp}°C（体感 {self.feels}°C），"
             f"{self.wind}，湿度 {self.humidity}%。"
+        )
+
+
+@dataclass
+class ForecastResult:
+    city: str
+    day: str          # "明天" / "后天"
+    date: str         # fxDate，形如 2026-09-15
+    weather: str      # 白天天气现象
+    temp_range: str   # "12~18"
+    wind: str
+    raw: dict
+
+    def format(self) -> str:
+        return (
+            f"{self.city}{self.day}（{self.date}）：{self.weather}，"
+            f"气温 {self.temp_range}°C，{self.wind}。"
         )
 
 
@@ -223,6 +255,18 @@ def _fetch_current(location_id: str) -> Optional[dict]:
     return data.get("now")
 
 
+def _fetch_forecast(location_id: str) -> Optional[list]:
+    """未来 3 天预报（含今天）。和风 3d 在个人开发者免费额度内。"""
+    data = _http_get(
+        f"{config.HEFENG_BASE_URL}/v7/weather/3d",
+        {"location": location_id},
+        timeout=config.HEFENG_TIMEOUT,
+    )
+    if not data or data.get("code") != "200":
+        return None
+    return data.get("daily")
+
+
 def get_weather(city: Optional[str] = None) -> Optional[WeatherResult]:
     """查询当前天气。任一步失败返回 None，由上层降级。
 
@@ -253,10 +297,48 @@ def get_weather(city: Optional[str] = None) -> Optional[WeatherResult]:
     )
 
 
-def format_answer(city: Optional[str] = None) -> str:
-    """对外暴露的统一接口：返回答案字符串，失败时返回固定兜底。"""
+def get_forecast(city: Optional[str], day: str) -> Optional[ForecastResult]:
+    """查询某城市"明天/后天"的预报。任一步失败返回 None，由上层降级。
+
+    !! 直接用 textDay：daily 的 text 本身就是中文现象描述，
+       不需要再过 _WEATHER_ICONS 表。
+    """
+    if not config.HEFENG_ENABLED:
+        return None
+    if not _get_api_key():
+        return None
+
+    # daily[0]=今天 / [1]=明天 / [2]=后天
+    offset = {"明天": 1, "后天": 2}.get(day, 0)
+    if offset == 0:
+        return None
+
+    city = city or config.HEFENG_CITY
+    loc_id = _lookup_location(city)
+    if not loc_id:
+        return None
+    daily = _fetch_forecast(loc_id)
+    if not daily or len(daily) <= offset:
+        return None
+    d = daily[offset]
+    return ForecastResult(
+        city=city,
+        day=day,
+        date=d.get("fxDate", "?"),
+        weather=d.get("textDay", "未知"),
+        temp_range=f"{d.get('tempMin', '?')}~{d.get('tempMax', '?')}",
+        wind=f"{d.get('windDirDay', '')} {d.get('windScaleDay', '?')}级".strip(),
+        raw=d,
+    )
+
+
+def format_answer(city: Optional[str] = None, day: Optional[str] = None) -> str:
+    """对外统一接口：返回答案字符串，失败时返回固定兜底。
+
+    :param day: "明天"/"后天" 时走 3d 预报接口；None 走实况。
+    """
     try:
-        r = get_weather(city)
+        r = get_forecast(city, day) if day else get_weather(city)
     except Exception as exc:                       # 兜底的兜底
         logger.write_jsonl(config.LOG_PATH,
                            {"event": "weather_exception", "error": str(exc)})
