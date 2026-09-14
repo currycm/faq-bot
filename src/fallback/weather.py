@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import gzip
 import json
-import os
 import re
 import urllib.error
 import urllib.parse
@@ -170,7 +169,8 @@ class ForecastResult:
 
 
 def _get_api_key() -> str:
-    return config.HEFENG_API_KEY or os.environ.get("HEFENG_API_KEY", "")
+    # 2026-09 清理：不再二次读 os.environ —— 密钥统一走 config._load_secret
+    return config.HEFENG_API_KEY
 
 
 def _decode_body(data: bytes) -> str:

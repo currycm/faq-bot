@@ -124,10 +124,12 @@ def enforce_security(
                 sanitized_query="",
                 injection_rules=verdict.rules,
             )
-        medium_rules = [r for r in verdict.rules if r]  # 全记，medium 也带上
+        all_rules = [r for r in verdict.rules if r]
+        # 2026-09 改名：原名 medium_rules 名实不符 —— 这里装的是 high + medium
+        # 的**全量**命中规则，不是只有 medium。
 
     else:
-        medium_rules = []
+        all_rules = []
 
     # ----- 第二关：限流（rate_limit） -----
     try:
@@ -194,7 +196,7 @@ def enforce_security(
         allowed=True,
         sanitized_query=sanitized,
         pii_hits=pii_hits,
-        injection_rules=medium_rules,
+        injection_rules=all_rules,
         budget_consumed=budget_consumed,
     )
 

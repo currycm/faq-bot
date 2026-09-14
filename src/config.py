@@ -236,14 +236,12 @@ TORCH_NUM_THREADS = int(os.environ.get("FAQ_TORCH_THREADS", "1"))
 #   3. 通识知识/闲聊               → 调 LLM 兜底
 # 任何一层失败，都降级到固定话术 —— 兜底也有兜底。
 
-# 启用兜底路由器（推荐 True）。关闭后等价于原 FALLBACK_MODE=fixed
-FALLBACK_ROUTER_ENABLED = True
-
-# !! 重要：仍然保留 FALLBACK_MODE 作为最末端的兜底策略。
-#   fixed  - 固定话术（最安全）
-#   human  - 转人工（需要后台坐席系统）
-#   llm    - 调 LLM（仅在路由器关闭、且你不希望走路由器时使用）
-FALLBACK_MODE = "fixed"
+# 2026-09 清理：删除 FALLBACK_ROUTER_ENABLED / FALLBACK_MODE / FALLBACK_HUMAN_TEXT。
+# 原因：路由器已经是**唯一**的兜底入口（agent 主链路直接调 dispatch），而
+# FALLBACK_ROUTER_ENABLED 写死 True、没有 env 开关 —— 那个"总开关"实际拨不动，
+# 只是让 _legacy_fallback 常年不可达；FALLBACK_HUMAN_TEXT 里还写死了
+# 010-12345678 这种假电话，一旦被人为启用就会向用户展示假号码。
+# 现在 dispatch 若意外抛异常，agent 直接降级到 FALLBACK_TEXT（见 agent.ask）。
 # 兜底话术的唯一原则：**只说"我答不上"，不说"我为什么答不上"。**
 # "API key 没配""网络异常""预算用完了""让管理员补语料"都是给运维看的信息，
 # 学生看到只会一头雾水，还会怀疑整个服务是坏的。
@@ -251,11 +249,8 @@ FALLBACK_TEXT = (
     "抱歉，这个问题我暂时答不上。\n"
     "可以换个问法试试，比如问得再具体一点。"
 )
-FALLBACK_HUMAN_TEXT = "这个问题已转接人工客服，请稍候，或拨打卡务热线 010-12345678。"
-
-# 未命中时是否展示 Top-K 候选。默认 False —— 强行推荐"你可能想问"
-# 容易把用户带偏（"我没问这个啊"），不如老实说不会。
-SHOW_SUGGESTIONS = False
+# FALLBACK_HUMAN_TEXT（含 010-12345678 假电话）与 SHOW_SUGGESTIONS 也已删除：
+# 两者都只被 _legacy_fallback 使用，随该函数一起下线。
 
 
 # ---------------------------------------------------------------- LLM 兜底（DeepSeek）

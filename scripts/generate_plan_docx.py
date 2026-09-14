@@ -184,10 +184,7 @@ def main():
 
     add_h(doc, "5.1 主开关", 2)
     config_rows = [
-        ["FALLBACK_ROUTER_ENABLED", "True", "总开关，关掉退回 v3 行为"],
-        ["FALLBACK_MODE", "fixed", "最末端兜底策略"],
         ["FALLBACK_TEXT", "固定话术", "兜底的兜底"],
-        ["SHOW_SUGGESTIONS", "False", "是否在兜底时推荐 Top-3"],
         ["ROUTER_LOG_ENABLED", "True", "路由器决策日志"],
     ]
     add_table(doc, ["配置项", "默认值", "作用"], config_rows,

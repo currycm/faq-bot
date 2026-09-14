@@ -222,8 +222,10 @@ BGE 检索 ──── 命中（≥ 0.60）───► FAQ 主路径
 ### 配置项（`src/config.py`）
 
 ```python
-# 主开关
-FALLBACK_ROUTER_ENABLED = True          # 关掉则退回 v3 行为
+# 2026-09：FALLBACK_ROUTER_ENABLED / FALLBACK_MODE / FALLBACK_HUMAN_TEXT /
+# SHOW_SUGGESTIONS 已随 _legacy_fallback 一起删除 —— 路由器是唯一的兜底入口，
+# 不再有"副开关"。（原来的总开关写死 True、没有对应 env 变量，实际拨不动，
+# 只是让旧分支常年不可达；旧分支里还有通义千问时代的死嗅探和假电话话术。）
 
 # DeepSeek（兼容 OpenAI 协议，国内访问稳定、价格便宜）
 DEEPSEEK_ENABLED = True

@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -41,7 +40,13 @@ class LLMAnswer:
 
 
 def _get_api_key() -> str:
-    return config.DEEPSEEK_API_KEY or os.environ.get("DEEPSEEK_API_KEY", "")
+    """密钥统一走 config（config 内部已用 _load_secret 读过环境变量）。
+
+    2026-09 清理：此前这里又兜了一层 os.environ.get —— 违反 config.py 里写明的
+    "所有 API Key 统一通过 _load_secret() 读取，不允许在任何模块里直接读环境变量"
+    约定，也让"密钥到底从哪来"变得难追。
+    """
+    return config.DEEPSEEK_API_KEY
 
 
 def call_llm(question: str, system: Optional[str] = None) -> Optional[LLMResult]:

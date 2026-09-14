@@ -229,8 +229,7 @@ def test_end_to_end():
 
 # ---------------------------------------------------------------- 主流程
 if __name__ == "__main__":
-    # 确保 router 启用
-    config.FALLBACK_ROUTER_ENABLED = True
+    # 2026-09：FALLBACK_ROUTER_ENABLED 已删除 —— 路由器是唯一的兜底入口
     config.DEEPSEEK_ENABLED = True
     config.HEFENG_ENABLED = True
 

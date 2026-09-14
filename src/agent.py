@@ -94,51 +94,14 @@ def flatten(intents: list[dict]) -> list[dict]:
     ]
 
 
-# ------------------------------------------------------------------ 兜底 v4
-def fallback(query: str, hits: list, threshold: float) -> str:
-    """v4 兜底策略：路由器分发。
-
-    顺序（路由器内部）：
-        1. 闲聊 → 固定话术
-        2. 实时（天气等）→ 调 API
-        3. 校园事务未命中 → 固定话术（绝不进 LLM）
-        4. 通识 → LLM 兜底
-        5. 任何层失败 → 降级到 FALLBACK_TEXT
-
-    原 FALLBACK_MODE 的"human"分支仍保留作为最后的人工兜底。
-    """
-    # 关掉路由器时，保留旧逻辑
-    if not getattr(config, "FALLBACK_ROUTER_ENABLED", False):
-        return _legacy_fallback(query, hits, threshold)
-
-    from .fallback import dispatch
-    decision = dispatch(query)
-    return decision.answer
-
-
-def _legacy_fallback(query: str, hits: list, threshold: float) -> str:
-    """旧版兜底：仅在 FALLBACK_ROUTER_ENABLED=False 时使用。"""
-    mode = config.FALLBACK_MODE
-
-    if mode == "human":
-        return config.FALLBACK_HUMAN_TEXT
-
-    if mode == "llm":
-        # 走新版 LLM 客户端
-        from .fallback import llm_client
-        ans = llm_client.format_answer(query)
-        if "通义千问生成" in ans:
-            return ans
-        return config.FALLBACK_TEXT
-
-    # 默认 fixed：固定话术 + 条件性推荐
-    text = config.FALLBACK_TEXT
-    if config.SHOW_SUGGESTIONS and hits:
-        top = hits[0]
-        if (threshold - top.score) < 0.10 and top.score >= threshold * 0.7:
-            suggestions = "\n".join(f"  · {h.question}" for h in hits[:3])
-            text += "\n\n你可能想问：\n" + suggestions
-    return text
+# ------------------------------------------------------------------ 兜底说明
+# 2026-09 清理：删掉了 fallback() 包装函数与 _legacy_fallback()。
+# 两者是 FALLBACK_ROUTER_ENABLED 关闭后的分支，而那个"总开关"写死 True、
+# 没有 env 开关 —— 生产里**永远不可达**，却留着两条隐患：
+#   1. `if "通义千问生成" in ans` —— 通义千问时代的模型标签嗅探，换 DeepSeek 后
+#      永不命中，纯死分支；
+#   2. 假电话话术 FALLBACK_HUMAN_TEXT（010-12345678），一旦被启用会骗到用户。
+# 现在兜底只有一条路：主链路直接调 .fallback.dispatch（见下方 ask）。
 
 
 # ------------------------------------------------------------------ 主体
@@ -325,23 +288,26 @@ class FaqBot:
                                  "rule": "slow_path_saturated"}
             else:
                 try:
-                    if getattr(config, "FALLBACK_ROUTER_ENABLED", False):
-                        from .fallback import dispatch
-                        # !! 关键：dispatch() 只能调一次。
-                        #    路由器内部会触发 LLM / 天气 API，调两次 = 双倍费用 + 双倍延迟。
-                        # 把脱敏后的 query 透传给 LLM 通道；路由器分类仍用原 query
-                        decision = dispatch(query, sanitized_query=sanitized_for_llm)
-                        answer = decision.answer
-                        fallback_info = {
-                            "type": decision.query_type.value,
-                            "source": decision.source,
-                            "rule": decision.rule,
-                        }
-                    else:
-                        answer = fallback(query, hits, self.threshold)
-                        fallback_info = {"type": "legacy",
-                                         "source": config.FALLBACK_MODE,
-                                         "rule": ""}
+                    from .fallback import dispatch
+                    # !! 关键：dispatch() 只能调一次。
+                    #    路由器内部会触发 LLM / 天气 API，调两次 = 双倍费用 + 双倍延迟。
+                    # 把脱敏后的 query 透传给 LLM 通道；路由器分类仍用原 query
+                    decision = dispatch(query, sanitized_query=sanitized_for_llm)
+                    answer = decision.answer
+                    fallback_info = {
+                        "type": decision.query_type.value,
+                        "source": decision.source,
+                        "rule": decision.rule,
+                    }
+                except Exception as exc:
+                    # 兜底链路的兜底。路由器设计上"任何一层失败都降级、不裸抛"，
+                    # 但真出意外也不能让整个请求 500 —— 退到固定话术即可。
+                    # 写 stderr 而不是 qa.log：别让异常记录混进问答日志的既有 schema。
+                    print(f"[fallback] dispatch 异常，降级为固定话术："
+                          f"{type(exc).__name__}: {exc}", file=sys.stderr)
+                    answer = config.FALLBACK_TEXT
+                    fallback_info = {"type": "error", "source": "fixed",
+                                     "rule": type(exc).__name__}
                 finally:
                     _slow_path_gate.release()
 
