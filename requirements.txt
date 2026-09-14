@@ -4,7 +4,11 @@ scikit-learn>=1.3.0
 numpy>=1.24.0
 
 # ---- 网页入口（可选，用于 streamlit run app.py）----
-streamlit>=1.28.0
+# !! 下限 1.42：app.py 用到 st.container(horizontal=True, gap=...)，
+#    更老版本渲染横向按钮排布会静默退化或直接报参数不存在。
+streamlit>=1.42.0
+# app.py / tests/test_ui.py 直接 import（此前靠 streamlit 传递依赖捎带）
+requests>=2.31.0
 
 # ---- v3 升级 BGE 向量化（推荐）----
 # 首次运行会从 HuggingFace Hub 下载 BGE 模型到本地缓存：

@@ -146,14 +146,17 @@ class BudgetGuard:
         """查看熔断器状态（监控用）。"""
         with self._lock:
             calls = self._window.count_in(self.window_sec)
+            cost = self._window.cost_in(self.window_sec)
             return {
                 "name": self.name,
                 "window_sec": self.window_sec,
                 "calls_in_window": calls,
-                "cost_in_window": round(self._window.cost_in(self.window_sec), 6),
+                "cost_in_window": round(cost, 6),
                 "max_calls": self.max_calls,
                 "max_cost_cny": self.max_cost_cny,
-                "is_open": calls >= self.max_calls,
+                # 2026-09 修复：双指标任一触顶即算熔断——此前只看次数，
+                # 成本维度先爆时监控面板仍显示 is_open=False。
+                "is_open": calls >= self.max_calls or cost >= self.max_cost_cny,
             }
 
     def reset(self) -> None:

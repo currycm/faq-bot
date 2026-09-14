@@ -28,17 +28,28 @@ from typing import List, Optional
 
 # === 归一化（2026-09 修复：零宽/全角/空格插入绕过） ===
 # 攻击者加一个 U+200B 或全角字符就能让所有正则失效。
-# 检测时原文 + 归一化文本双重匹配，任一命中即算命中。
+# 检测用三种变体匹配，任一命中即算命中：
+#   原文 / 全折叠 / 保留结构符折叠
+# 2026-09 修复：全折叠会把 <>[]() 一并删掉，"<| im_start |>"、
+# "[ I N S T ]" 这类插空格的控制符在原文（有空格）和全折叠
+#（结构符没了）两个变体上都匹配不上。保留结构符的变体专治这种绕过。
 _ZERO_WIDTH_RE = re.compile(r"[​-‏‪-‮﻿]")
 _FOLD_RE = re.compile(r"[\s\-_.,·`'\"!！?？。，、；：:（）()\[\]{}<>「」『』]+")
+# 注意下划线也要保留：im_start / end_of_text 等控制符自带 _，
+# 折掉会变成 imstart，正则就匹配不上了
+_FOLD_KEEP_STRUCT_RE = re.compile(r"[\s\-.,·`'\"!！?？。，、；：:「」『』]+")
 
 
-def _normalize(text: str) -> str:
-    """NFKC → 删零宽 → 折叠空白标点（"忽 略 之 前 的 指 令" → "忽略之前的指令"）。"""
+def _normalize(text: str, keep_struct: bool = False) -> str:
+    """NFKC → 删零宽 → 折叠空白标点（"忽 略 之 前 的 指 令" → "忽略之前的指令"）。
+
+    :param keep_struct: True 时保留 <>[](){} 结构符 —— 专供 <|im_start|>、
+                        [INST]、<<SYS>> 这类模型控制符规则的匹配变体。
+    """
     text = unicodedata.normalize("NFKC", text)
     text = _ZERO_WIDTH_RE.sub("", text)
-    text = _FOLD_RE.sub("", text)
-    return text
+    fold = _FOLD_KEEP_STRUCT_RE if keep_struct else _FOLD_RE
+    return fold.sub("", text)
 
 
 # === 攻击模式 ===
@@ -130,6 +141,7 @@ def detect(query: Optional[str]) -> InjectionVerdict:
 
     2026-09 修复：原文 + 归一化文本（NFKC/去零宽/折叠空白标点）
     双重匹配 —— 攻击者插零宽字符、全角字母、空格都无法绕过。
+    控制符类攻击另有"保留结构符"折叠变体兜底（见 _normalize）。
 
     异常策略：内部异常 → 返回 safe=True 的默认 verdict，
     确保检测模块本身不会把主流程搞挂。
@@ -141,11 +153,9 @@ def detect(query: Optional[str]) -> InjectionVerdict:
         rules: List[str] = []
         highest_level = ""
 
-        variants = {query, _normalize(query)}
+        variants = {query, _normalize(query), _normalize(query, keep_struct=True)}
 
         for name, regex, level in _PATTERNS:
-            if name in rules:
-                continue
             if any(regex.search(v) for v in variants):
                 rules.append(name)
                 if level == "high":

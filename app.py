@@ -5,14 +5,15 @@
     1) 先启动 FastAPI 后端：uvicorn api:app --port 8000
     2) 再启动前端：      streamlit run app.py
 
-排查问题时在 URL 后加 ?debug=1 可显示调试信息（trace_id / 相似度 / 候选列表）。
+排查问题时在启动前端的终端里设 FAQ_DEBUG=1 可显示调试信息（trace_id / 相似度 / 候选列表）。
+仅环境变量生效，URL ?debug=1 参数已废弃（2026-09 修复：任何访客都能加参数，属无鉴权信息泄露）。
 
 --------------------------------------------------------------------------
 v7.1 改动：前端去 AI 味 / 信息降噪
 
 核心判断：**调试信息不是给用户的**。
     trace_id、相似度分数、候选进度条、意图数、vectorizer 全部默认隐藏，
-    只有 ?debug=1 时才显示。之前一条回答叠 5 层，其中 3 层学生根本不看。
+    只有 FAQ_DEBUG=1 时才显示。之前一条回答叠 5 层，其中 3 层学生根本不看。
 
 其余改动：
     1. 标题去掉 emoji 和技术栈（"v7 (FastAPI 后端)" 是写给开发看的）
@@ -70,18 +71,12 @@ def source_of(r: dict) -> tuple[str, str]:
     return "none", "知识库暂未收录"
 
 
-def _debug_mode() -> bool:
-    """URL 带 ?debug=1 才显示调试信息。
-
-    st.query_params 在 1.30+ 才稳定，老版本回退到 experimental 接口。
-    """
-    try:
-        return st.query_params.get("debug") == "1"
-    except Exception:
-        try:
-            return st.experimental_get_query_params().get("debug", [""])[0] == "1"
-        except Exception:
-            return False
+# ---------------------------------------------------------------- 调试开关
+# 调试面板只认环境变量 FAQ_DEBUG=1，不再认 URL ?debug=1。
+# 2026-09 修复：URL 参数任何访客都能加，等于无鉴权暴露 API 基址、
+# trace_id、内部阈值、候选分数和反馈统计。改为环境变量后，
+# 线上不开就谁也看不到；运维排查时在自己终端/容器里临时打开。
+_DEBUG_ENABLED = os.environ.get("FAQ_DEBUG", "").strip().lower() in ("1", "true", "yes")
 
 
 # ---------------------------------------------------------------- 对话区滚动
@@ -285,7 +280,7 @@ def main() -> None:
         st.title("校园问答")
         st.caption("南京工业职业技术大学")
 
-        DEBUG = _debug_mode()
+        DEBUG = _DEBUG_ENABLED
 
         # ---------------------------------------------------------- 后端健康检查
         health = api_health()
@@ -299,7 +294,7 @@ def main() -> None:
             st.stop()
 
         # 注：这里原本有个侧边栏（运行状态 / 反馈统计），已删除 —— 学生用不到，
-        # 还白白占着左侧一栏。反馈统计挪到了页面底部，?debug=1 才显示。
+        # 还白白占着左侧一栏。反馈统计挪到了页面底部，FAQ_DEBUG=1 时才显示。
 
         # ---------------------------------------------------------- 会话状态
         if "history" not in st.session_state:
@@ -355,13 +350,16 @@ def main() -> None:
                                     st.session_state.pending_query = c["question"]
                                     st.rerun()
 
-                    # 调试信息：只在 ?debug=1 时出现
+                    # 调试信息：只在 FAQ_DEBUG=1 时出现
                     if DEBUG:
                         with st.expander("调试信息"):
                             st.caption(
                                 f"trace_id: `{r.get('trace_id', 'n/a')}` ｜ "
                                 f"耗时 {r.get('latency_ms', 0):.0f} ms"
                             )
+                            # api_ask 失败时的底层异常串只在调试模式可见
+                            if r.get("_error"):
+                                st.caption(f"错误详情：{r['_error']}")
                             if r.get("matched"):
                                 st.caption(
                                     f"命中意图 `{r.get('tag')}` ｜ "
@@ -407,7 +405,7 @@ def main() -> None:
                     del st.session_state[k]
                 st.rerun()
 
-        # ---------------------------------------------------------- 运营数据（仅 ?debug=1）
+        # ---------------------------------------------------------- 运营数据（仅 FAQ_DEBUG=1）
         # 好评率是运营要看的，但学生不需要，所以只在调试模式出现
         if DEBUG:
             with st.expander("反馈统计"):

@@ -27,19 +27,23 @@ services:
       # KEY 经 Docker secret 注入（敏感内容不会出现在 docker inspect）
       - DEEPSEEK_API_KEY_FILE=/run/secrets/deepseek_key
       - HEFENG_API_KEY_FILE=/run/secrets/hefeng_key
-      # !! 和风「自定义域名」前缀是控制台分配的 mc3byj5bbc，**不是** API key 的前 8 位。
-      #    之前填成 key 前缀 b42fbaf8 → 边缘节点直接裸 403（无 body），排查了很久。
-      #    自定义域名下 weather 和 geo 共用同一个 host，只是 path 不同：
-      #      weather → {BASE}/v7/weather/now
-      #      geo     → {BASE}/geo/v2/city/lookup  （代码里拼的是 "{GEO_URL}/v2/city/lookup"）
-      #    所以 GEO_URL 必须带 /geo 后缀；官方 devapi 用户才用 https://geoapi.qweather.com
-      - HEFENG_BASE_URL=https://mc3byj5bbc.re.qweatherapi.com
-      - HEFENG_GEO_URL=https://mc3byj5bbc.re.qweatherapi.com/geo
+      # !! 和风专属 API Host 从 .env 读取（2026-09 修复：账号专属域名
+      #    属账号配置，不再明文写进仓库）。留空时 config.py 回退官方 devapi。
+      #    填法与两个大坑（host 前缀是控制台分配的、不是 key 前 8 位；
+      #    GEO_URL 必须带 /geo 后缀）详见 .env.example 的和风一节。
+      - HEFENG_BASE_URL=${HEFENG_BASE_URL:-}
+      - HEFENG_GEO_URL=${HEFENG_GEO_URL:-}
       # 通用配置
       - LOG_LEVEL=info
       # 强制 HuggingFace 离线（模型已预下载进镜像）
       - HF_HUB_OFFLINE=1
       - TRANSFORMERS_OFFLINE=1
+      # 部署安全（值在 .env / shell 里配置，见 .env.example 部署安全一节）：
+      #   CORS 默认与本机 Streamlit(8501) 匹配；TRUST_PROXY_HEADERS 仅在
+      #   API 只暴露于可信 nginx 之后时设 1，否则客户端可伪造 XFF 绕过限流；
+      #   不设（0）时走 nginx 上线会让全校共用一个 IP 限流桶，正常流量互相误伤。
+      - FAQ_CORS_ORIGINS=${FAQ_CORS_ORIGINS:-http://localhost:8501,http://127.0.0.1:8501}
+      - FAQ_TRUST_PROXY_HEADERS=${FAQ_TRUST_PROXY_HEADERS:-0}
     secrets:
       - deepseek_key
       - hefeng_key

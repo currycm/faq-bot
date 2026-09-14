@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -135,7 +136,8 @@ def write_jsonl(path: Path, record: dict) -> None:
             f.write(json.dumps(safe_record, ensure_ascii=False,
                                default=str) + "\n")
     except (OSError, TypeError, ValueError) as exc:
-        print(f"[logger] 写日志失败（不影响问答）：{exc}")
+        # 写 stderr 而非 stdout：运维看的是 stderr；stdout 混入告警会污染管道输出
+        print(f"[logger] 写日志失败（不影响问答）：{exc}", file=sys.stderr)
 
 
 def log_query(result: dict) -> None:
