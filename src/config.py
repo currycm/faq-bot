@@ -419,10 +419,13 @@ SECURITY_LOG_ENABLED = True
 # ---------------------------------------------------------------- 部署安全（2026-09）
 # CORS 允许源：逗号分隔，通过环境变量 FAQ_CORS_ORIGINS 覆盖。
 # 2026-09 修复：删除 "*"（任意站点都能直调无鉴权接口、烧 LLM 预算）。
+# 2026-09 修复：默认端口 8510 是笔误——Streamlit 默认端口是 8501。
+# 当前架构浏览器不直连 API（Streamlit 服务端转发），暂无实际影响，
+# 但一旦改成 HTML/JS 前端直连就会全部跨域被拦。
 CORS_ORIGINS = [
     o.strip() for o in
     os.environ.get("FAQ_CORS_ORIGINS",
-                   "http://localhost:8510,http://127.0.0.1:8510").split(",")
+                   "http://localhost:8501,http://127.0.0.1:8501").split(",")
     if o.strip()
 ]
 

@@ -102,8 +102,15 @@ class TestCheckRateLimit:
         assert ok
 
     def test_neither_pass(self):
-        ok, _ = check_rate_limit(None, None)
-        assert ok  # 都未识别，放行
+        """2026-09 修复语义：双空身份不再"直接放行"，而是消耗共享兜底桶
+        （复用 IP 限流器，默认容量 30）。否则识别不到身份的请求完全不受限。
+        """
+        for _ in range(30):
+            ok, _ = check_rate_limit(None, None)
+            assert ok
+        ok, reason = check_rate_limit(None, None)
+        assert not ok
+        assert reason
 
 
 # ============================================================ budget

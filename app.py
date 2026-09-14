@@ -193,11 +193,13 @@ def api_suggest() -> list[str]:
 
 def api_ask(query: str, user_id: str) -> dict:
     """调 /ask（有后端时）或进程内直答（无后端时）。失败时返回错误 dict。"""
+    # 2026-09 修复：截断对两条路径统一生效。此前只有本地模式截断，
+    # HTTP 模式下超 200 字的 query 会被 api.py 的 AskRequest(max_length=200)
+    # 以 422 拒绝，raise_for_status 抛错后用户看到"服务暂时不可用"，
+    # 把输入校验错误误报成了宕机。
+    query = (query or "").strip()[:200]
     if _USE_LOCAL_BOT:
         try:
-            # 2026-09 修复：进程内直连此前绕过了 AskRequest 的
-            # max_length=200 校验，超长 query 无人拦截。
-            query = (query or "").strip()[:200]
             return _get_bot().ask(query, user_id=user_id)
         except Exception as exc:
             return {

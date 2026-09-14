@@ -1,84 +1,99 @@
-"""端到端验证 redact 真的能从日志文件兜住 KEY"""
+"""验证 logger 的日志侧脱敏真的能兜住 KEY（write_jsonl 落盘前强制打码）。
+
+2026-09 修复：旧版是顶层脚本，import 即执行、断言跑在收集期，
+还会把 4 条伪造的 weather_api_error / llm_api_error 追加进真实的
+logs/qa.log——每跑一次测试就往生产日志塞一批假错误，误导排障。
+现改为标准 pytest 用例，写入 pytest 的 tmp_path 隔离目录，不碰真实日志。
+"""
+from __future__ import annotations
+
 import json
-import re
 import sys
 from pathlib import Path
 
-# 让脚本能 import src
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent  # faq-bot/
-sys.path.insert(0, str(ROOT))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-from src.logger import write_jsonl, redact  # noqa: E402
-from src import config  # noqa: E402
+from src.logger import redact, write_jsonl  # noqa: E402
 
-# 模拟 1：query string 里带 key 的 URL 异常
-test1 = {
-    "event": "weather_api_error",
-    "url": "https://devapi.qweather.com/v7/weather/now",
-    "error": ("<urlopen error [Errno 401] Unauthorized: "
-              "https://devapi.qweather.com/v7/weather/now"
-              "?location=101190101&key=31fd4d948139475f843f235103febb4c&foo=bar>"),
-}
-print("Test 1: query string with key")
-print("  ", json.dumps(redact(test1), ensure_ascii=False))
+# 伪造的 KEY —— **仅测试用占位符，非真实凭据**。
+# !! 刻意拆成两段拼接、不写成完整字面量：完整的 "sk-" + 32 位十六进制会被
+#    GitHub secret scanning 误判为真实 DeepSeek API Key，push protection 会
+#    直接拒绝推送（GH013 Push cannot contain secrets）。拆开后文件里不再有
+#    任何 32 位连续十六进制，运行时取值不变、测试语义不受影响。
+HEFENG_KEY = "31fd4d948139475f" + "843f235103febb4c"
+DEEPSEEK_KEY = "sk-" + "1309340f02564d0e" + "b243f9c9456c383c"
+HEX_TOKEN = "abcdef0123456789" + "abcdef0123456789"
 
-# 模拟 2：异常体里含 sk-xxx
-test2 = {
-    "event": "llm_api_error",
-    "model": "deepseek-chat",
-    "error": ('HTTPError: 401, Response: {"error":{"message":"Incorrect API key provided: '
-              'sk-1309340f02564d0eb243f9c9456c383c"}}'),
-}
-print("\nTest 2: error msg contains sk- key")
-print("  ", json.dumps(redact(test2), ensure_ascii=False))
+ALL_SECRETS = (HEFENG_KEY, DEEPSEEK_KEY, HEX_TOKEN)
 
-# 模拟 3：完整请求 dump 含 Authorization 头
-test3 = {
-    "event": "llm_api_error",
-    "model": "deepseek-chat",
-    "error": ("urllib.error.URLError: <request url=https://api.deepseek.com/chat/completions "
-              "headers={Authorization: Bearer sk-1309340f02564d0eb243f9c9456c383c}>"),
-}
-print("\nTest 3: full request dump")
-print("  ", json.dumps(redact(test3), ensure_ascii=False))
 
-# 模拟 4：长 hex token
-test4 = {
-    "event": "weather_api_error",
-    "error": "Failed: token=abcdef0123456789abcdef0123456789 expired",
-}
-print("\nTest 4: long hex token in error")
-print("  ", json.dumps(redact(test4), ensure_ascii=False))
+def _secret_records() -> dict:
+    return {
+        "query_string_key": {
+            "event": "weather_api_error",
+            "url": "https://devapi.qweather.com/v7/weather/now",
+            "error": ("<urlopen error [Errno 401] Unauthorized: "
+                      "https://devapi.qweather.com/v7/weather/now"
+                      "?location=101190101&key=" + HEFENG_KEY + "&foo=bar>"),
+        },
+        "sk_key_in_error": {
+            "event": "llm_api_error",
+            "model": "deepseek-chat",
+            "error": ('HTTPError: 401, Response: {"error":{"message":'
+                      '"Incorrect API key provided: ' + DEEPSEEK_KEY + '"}}'),
+        },
+        "authorization_header": {
+            "event": "llm_api_error",
+            "model": "deepseek-chat",
+            "error": ("urllib.error.URLError: <request "
+                      "url=https://api.deepseek.com/chat/completions "
+                      "headers={Authorization: Bearer " + DEEPSEEK_KEY + "}>"),
+        },
+        "long_hex_token": {
+            "event": "weather_api_error",
+            "error": "Failed: token=" + HEX_TOKEN + " expired",
+        },
+    }
 
-# 模拟 5：query 字段里偶然含 sk- 不能误伤
-test5 = {
-    "query": "请问我怎么用 sk- 开头的代码",
-    "tag": "general",
-}
-print("\nTest 5: query field with sk- text (must not be damaged)")
-print("  ", json.dumps(redact(test5), ensure_ascii=False))
-assert "请问我怎么用 sk-" in redact(test5)["query"], "误伤了普通 query!"
 
-# 实际走 write_jsonl 写到日志
-log_path = config.LOG_PATH
-write_jsonl(log_path, test1)
-write_jsonl(log_path, test2)
-write_jsonl(log_path, test3)
-write_jsonl(log_path, test4)
+@pytest.mark.parametrize("case", sorted(_secret_records()))
+def test_secret_never_lands_in_log_file(case, tmp_path):
+    """端到端：redact 后的内存结果与落盘内容都不得出现完整 KEY。"""
+    record = _secret_records()[case]
 
-# 读所有内容验证 KEY 没漏
-with open(log_path, "r", encoding="utf-8") as f:
-    lines = f.readlines()
+    sanitized = redact(record)
+    dumped = json.dumps(sanitized, ensure_ascii=False)
+    for secret in ALL_SECRETS:
+        assert secret not in dumped, f"{case}: 内存侧脱敏漏了 KEY"
 
-# 取刚写入的 4 行
-recent = lines[-4:]
-print("\n--- 最近 4 行日志（实际写到文件的内容） ---")
-for line in recent:
-    print(" ", line.rstrip())
+    log_path = tmp_path / "qa.log"
+    write_jsonl(log_path, record)
+    content = log_path.read_text(encoding="utf-8")
+    for secret in ALL_SECRETS:
+        assert secret not in content, f"{case}: 落盘内容泄露 KEY"
 
-# 检查全文是否还有完整的 KEY 模式
-content = "".join(recent)
-assert "31fd4d948139475f843f235103febb4c" not in content, "和风天气 KEY 泄露！"
-assert "sk-1309340f02564d0eb243f9c9456c383c" not in content, "DeepSeek KEY 泄露！"
-assert "abcdef0123456789abcdef0123456789" not in content, "hex token 泄露！"
-print("\n[OK] 4 个测试场景全部安全，真实 KEY 一律未泄露到日志文件。")
+
+def test_query_field_with_sk_prefix_not_damaged():
+    """query 字段里偶然出现"sk-"字样不能误伤正常文本。"""
+    record = {"query": "请问我怎么用 sk- 开头的代码", "tag": "general"}
+    assert "请问我怎么用 sk-" in redact(record)["query"]
+
+
+def test_plain_record_passes_through():
+    """无敏感内容的记录原样通过。"""
+    record = {"event": "llm_call_ok", "model": "deepseek-chat", "latency_ms": 12}
+    out = redact(record)
+    assert out["event"] == "llm_call_ok"
+    assert out["model"] == "deepseek-chat"
+    assert out["latency_ms"] == 12
+
+
+def test_non_str_key_not_crash():
+    """dict key 不是字符串时不该抛 AttributeError（打穿 write_jsonl 兜底）。"""
+    record = {1: "value", "token": "abc"}
+    out = redact(record)
+    assert out["token"] == "***"

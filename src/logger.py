@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import re
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -92,7 +91,10 @@ def _redact_value(value: Any, key_name: str | None = None) -> Any:
     :param key_name: 当前值的字段名（如果是 dict 的某个 key）
     """
     # 规则 1：字段名在白名单 → 整个值清成 ***
-    if key_name and key_name.lower() in _SENSITIVE_KEYS:
+    # str() 兜底：dict key 可能不是字符串（json.dumps 会把 int key 转成
+    # 字符串落盘），直接调 .lower() 会抛 AttributeError——它不在
+    # write_jsonl 捕获的异常列表里，会打穿"写日志失败不影响主流程"。
+    if key_name and str(key_name).lower() in _SENSITIVE_KEYS:
         return _REDACTED
 
     # dict：递归处理每一个键值对
@@ -286,8 +288,3 @@ def summarize_unmatched(limit: int = 20) -> list[dict]:
         return []
 
     return sorted(counter.values(), key=lambda x: -x["count"])[:limit]
-
-
-def _unused(*_args):
-    """占位，避免 time 未使用的告警。"""
-    return time.time()
