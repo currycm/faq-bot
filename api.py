@@ -116,7 +116,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="faq-bot",
-    version="7.0",
+    version="8.0",
     description="校园 FAQ 问答机器人生产 API",
     lifespan=lifespan,
 )
