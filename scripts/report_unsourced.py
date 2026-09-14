@@ -113,6 +113,9 @@ def build() -> str:
     noticed = [i for i in intents if (i.get("_meta") or {}).get("type") == "real_notice_v3"]
     official_doc = [i for i in intents if (i.get("_meta") or {}).get("type") == "official_doc"]
     guidance = [i for i in intents if (i.get("_meta") or {}).get("type") == "guidance"]
+    # v1.8.0 新增：人工线下/电话核实。没有 URL 可引，但有明确的核实对象和日期，
+    # 可信度介于「有原文可核」与「作者推测」之间 —— 单列一档，不要混进 official_doc。
+    manual = [i for i in intents if (i.get("_meta") or {}).get("type") == "manual_verified"]
     unsourced = [i for i in intents if not i.get("_meta")]
 
     # 顶层 `source` 字段是"死字段"——app.py / agent.py 都不读取，
@@ -168,17 +171,31 @@ def build() -> str:
     L.append(f"| `real_notice_v3` | {len(noticed)} | ✅ 有官方通知原文 | 全部是部门前缀 `jwc_` / `xsc_` / `xxh_`，含 `url` + `title` + `date` |")
     L.append(f"| `official_doc` | {len(official_doc)} | ✅ 有官方文档/页面 | {', '.join('`%s`' % i['tag'] for i in official_doc) or '—'}，含 `url` + `title`，来源为官方 PDF/网页（v1.6.0 新增）|")
     L.append(f"| `guidance` | {len(guidance)} | ⚠️ 有标注、无原文 | {', '.join('`%s`' % i['tag'] for i in guidance)}，正文已声明以官方为准 |")
-    L.append(f"| **无 `_meta`** | **{len(unsourced)}** | ❌ **无溯源** | 本清单主体，全部是话题前缀（`library_` / `card_` / `dorm_` …）|")
+    L.append(f"| `manual_verified` | {len(manual)} | 🟡 **人工核实，无原文** | "
+             f"无 url 可引，但有核实对象与核实日期（见第三节）；可信度高于"
+             f"「作者推测」、低于「有原文可核」 |")
+    L.append(
+        f"| **无 `_meta`** | **{len(unsourced)}** | ❌ **无溯源** | "
+        + (", ".join("`%s`" % i["tag"] for i in unsourced) or "—")
+        + " |"
+    )
     L.append("")
-    L.append("> ⚠️ **关于顶层 `source` 字段**：本清单里标「无 `_meta`」的意图中，有 24 条带顶层 `source`")
-    L.append("> （如「后勤保障部」「学生处心理咨询中心」），但那只是作者手填的文本声明，**没有 url 可核**，")
+    L.append(f"> ⚠️ **关于顶层 `source` 字段**：本清单里标「无 `_meta`」的意图中，"
+             f"有 {sum(1 for r in rows if r['top_src'])} 条带顶层 `source`")
+    L.append("> （" + ("、".join("「%s」" % r["top_src"] for r in rows if r["top_src"]) or "无")
+             + "），但那只是作者手填的文本声明，**没有 url 可核**，")
     L.append("> 且代码（`app.py` / `agent.py`）**根本不读取该字段**——UI 来源标签来自兜底信息。")
     L.append("> 经核对，其中「后勤保障部」「学生处心理咨询中心」这两个部门名**在学校机构设置里并不存在**")
     L.append("> （真实应为「学工处·学生公寓管理科」「学工处·心理健康教育教研室」，`dorm_repair` / `psych_counseling`")
     L.append("> 已在 v1.6.0 改为 `official_doc` 并修正）。**因此顶层 `source` 一律不计入「有溯源」。**")
     L.append("")
-    L.append("**规律很明显**：凡是从官方通知/文档生成的意图（部门前缀 + v1.6.0 两条）都带溯源；")
-    L.append("早期手写的一批 + 后补的 P0/P1 生活服务类（话题前缀）一律没有。")
+    if unsourced:
+        L.append(f"**当前规律**：从官方通知/文档生成的意图（部门前缀）都带溯源；"
+                 f"仍未溯源的 {len(unsourced)} 条见第二节风险分级。")
+    else:
+        L.append("**当前状态：全部意图都已标注来源类型**（通知原文 / 官方文档 / 人工核实 / 引导型），")
+        L.append("本清单转为审计留档。⚠️ 其中 `manual_verified` 一档**没有原文可引、会随政策变化过期**，")
+        L.append("凡涉及时间、金额、地点、数量的数字，每学年至少复核一次。")
     L.append("")
 
     L.append("## 二、风险分级")
@@ -199,17 +216,19 @@ def build() -> str:
 
     L.append("## 三、逐条明细")
     L.append("")
-    L.append("### P0 —— 优先补齐（按问法数排序）")
-    L.append("")
-    for r in [x for x in rows if x["level"] == "P0"]:
-        L.append(f"#### `{r['tag']}`（{r['nq']} 问法）")
+    p0 = [x for x in rows if x["level"] == "P0"]
+    if p0:      # 没有 P0 时不要留下空标题（v1.8.0 之后就出现过一次）
+        L.append("### P0 —— 优先补齐（按问法数排序）")
         L.append("")
-        L.append(f"- 示例问句：{r['first_q']}")
-        L.append(f"- 硬事实类别：{' / '.join(r['facts'])}")
-        L.append(f"- 待核对的片段：{'；'.join('`%s`' % s for s in r['samples'])}")
-        if r["src_flag"]:
-            L.append(f"- 来源声明：{r['src_flag']}")
-        L.append("")
+        for r in p0:
+            L.append(f"#### `{r['tag']}`（{r['nq']} 问法）")
+            L.append("")
+            L.append(f"- 示例问句：{r['first_q']}")
+            L.append(f"- 硬事实类别：{' / '.join(r['facts'])}")
+            L.append(f"- 待核对的片段：{'；'.join('`%s`' % s for s in r['samples'])}")
+            if r["src_flag"]:
+                L.append(f"- 来源声明：{r['src_flag']}")
+            L.append("")
 
     for lvl, title in (("P1", "P1 —— 有兜底，但事实仍应核对"), ("P2", "P2 —— 泛化描述"), ("豁免", "豁免 —— 无需外部溯源")):
         sub = [x for x in rows if x["level"] == lvl]
@@ -250,8 +269,9 @@ def build() -> str:
     L.append("")
     L.append("## 五、建议的补齐路线")
     L.append("")
-    L.append("1. **先补 P0**：这些是「具体到数字」的断言，被追问一句就见底。")
-    L.append("   优先挑问法多的（`course_selection` / `library_borrow` / `transcript` / `medical` 等）。")
+    L.append("1. **先补 P0**：这些是「具体到数字」的断言，被追问一句就见底，优先挑问法多的。")
+    L.append("   （v1.8.0 已把 `course_selection` / `library_borrow` / `transcript` / `medical` 等")
+    L.append("   原 P0 条目通过人工核实补齐，现为 `manual_verified` —— 可作后续补条的参照格式。）")
     L.append("2. **补的方式三选一**：")
     L.append("   - 拿到官方通知原文 → 改写为「通知摘录型」，补 `_meta{source, category, url, title, date, type: real_notice_v3}`；")
     L.append("   - 拿到官方文档/网页（PDF、办事指南页等）→ 补 `_meta{...type: official_doc}`，正文保留可核实事实（如 `dorm_repair` / `psych_counseling` 在 v1.6.0 的做法）；")
@@ -268,6 +288,19 @@ def build() -> str:
     for it in sorted(noticed + official_doc, key=lambda x: (x["_meta"]["source"], x["tag"])):
         m = it["_meta"]
         L.append(f"| `{it['tag']}` | `{m['type']}` | {m['source']} | [{m['title']}]({m['url']}) | {m['date']} |")
+    if manual:
+        L.append("")
+        L.append("### `manual_verified` 型明细（人工核实，v1.8.0 新增）")
+        L.append("")
+        L.append("| 意图 | 核实来源 | 核实日期 |")
+        L.append("|---|---|---|")
+        for it in sorted(manual, key=lambda x: x["tag"]):
+            m = it["_meta"]
+            L.append(f"| `{it['tag']}` | {m['source']} | {m['date']} |")
+        L.append("")
+        L.append("> 这一档**没有 url 可引**，是人工问询/现场确认得来的。它比「作者推测」可靠，")
+        L.append("> 但仍会随政策变化过期 —— 正文里凡涉及时间、金额、地点、数量的数字，")
+        L.append("> 每个学年至少复核一次。")
     L.append("")
     for it in guidance:
         m = it["_meta"]
