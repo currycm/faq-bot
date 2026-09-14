@@ -41,8 +41,10 @@ def main() -> None:
           f"/ 应拒答 {sum(1 for c in cases if not c.get('expected_tag'))}）\n")
 
     print(f"{'方案':<12}{'构建ms':>9}{'召回@1':>9}{'Top3':>9}"
-          f"{'未识别':>9}{'误答':>9}{'误触发':>9}{'P50ms':>9}{'P99ms':>9}")
-    print("-" * 88)
+          f"{'未识别':>9}{'误答':>9}{'误触发':>9}{'命中P50':>10}{'命中P99':>10}")
+    print("-" * 89)
+    print("（延迟只统计 matched=True 的样本：未命中会转兜底链路 LLM/天气，"
+          "属慢路径，不参与方案对比）")
 
     for name, kw in CONFIGS:
         try:
@@ -60,12 +62,21 @@ def main() -> None:
         clear_answer_cache()
 
         # 预热一次，避免首查询懒加载污染 P99
-        bot.ask("测试预热")
+        bot.ask("测试预热", user_id="warmup", client_ip="10.50.0.1")
         latencies: list[float] = []
-        for c in cases:
+        for i, c in enumerate(cases):
+            # !! 必须逐样本独立身份。不传身份时所有请求落进同一个共享 IP 桶，
+            #    超额度后直接返回限流话术 —— **根本不走检索**。此时 P50 只有 ~1.9ms
+            #    而命中率掉到 21%，测出来的是「限流响应速度」而不是检索耗时。
+            kw = {"user_id": f"bench-{i}",
+                  "client_ip": f"10.50.{i // 250}.{i % 250 + 1}"}
             t0 = time.perf_counter()
-            bot.ask(c["query"])
-            latencies.append((time.perf_counter() - t0) * 1000.0)
+            r = bot.ask(c["query"], **kw)
+            dt = (time.perf_counter() - t0) * 1000.0
+            # 只统计真正跑完检索的请求：未命中会转入兜底链路（LLM / 天气，1.4~8s），
+            # 那是慢路径的耗时，混进来会让「检索方案对比」失去可比性。
+            if r.get("matched"):
+                latencies.append(dt)
 
         # 延迟循环本身也写满了缓存，评测前再清一次，保证是真实计算
         clear_answer_cache()
@@ -73,7 +84,7 @@ def main() -> None:
         print(f"{name:<12}{build_ms:>9.1f}{metrics['recall@1']:>8.1%}{metrics['top3']:>8.1%}"
               f"{metrics['unmatched_rate']:>8.1%}{metrics['wrong_rate']:>8.1%}"
               f"{metrics['false_trigger_rate']:>8.1%}"
-              f"{percentile(latencies, 50):>9.2f}{percentile(latencies, 99):>9.2f}")
+              f"{percentile(latencies, 50):>10.2f}{percentile(latencies, 99):>10.2f}")
 
 
 if __name__ == "__main__":
