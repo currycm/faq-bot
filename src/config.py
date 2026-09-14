@@ -204,6 +204,30 @@ RERANK_MODEL_NAME = "BAAI/bge-reranker-base"
 RERANK_THRESHOLD = 0.5
 
 
+# ---------------------------------------------------------------- 抗并发（2026-09）
+# ---- 答案缓存 ----
+# 只缓存**语料命中**结果，兜底类（LLM/天气）不缓存 —— 理由见 src/cache.py。
+ANSWER_CACHE_ENABLED = (
+    os.environ.get("FAQ_ANSWER_CACHE", "1").lower() in ("1", "true", "yes")
+)
+ANSWER_CACHE_SIZE = 512      # 最多缓存条数（超出按 LRU 淘汰）
+ANSWER_CACHE_TTL = 300       # 条目存活秒数
+
+# ---- 慢路径隔离 ----
+# 兜底链路（LLM 约 1.4s、天气最长 6s、LLM 超时 8s）与检索（约 10ms）共用
+# anyio 线程池（默认 40 线程/进程）。实测 48 个兜底请求在跑时，一条检索请求
+# 从 27ms 劣化到 509ms（19 倍）。这里给慢路径设并发上限：拿不到闸位就直接
+# 返回固定兜底话术（快速降级，与安全层"宁可退化，不可放空"一致），
+# 保证检索路径始终有线程可用。
+SLOW_PATH_MAX_CONCURRENCY = int(os.environ.get("FAQ_SLOW_PATH_MAX", "8"))
+
+# ---- CPU 推理线程数 ----
+# torch 默认让**每个算子**吃满所有核，而同步端点跑在线程池里（默认 40 线程），
+# 两者相乘就是严重过订阅（40×N 个线程抢 N 个核）。CPU 推理应靠**多进程**
+# （gunicorn worker）并行，而不是进程内多线程。
+TORCH_NUM_THREADS = int(os.environ.get("FAQ_TORCH_THREADS", "1"))
+
+
 # ---------------------------------------------------------------- 兜底配置 v4
 # 设计原则：宁可承认不会，也不要乱猜。但"承认不会"不等于"硬拒答"——
 # 检索不到时，我们按问题性质智能分流：

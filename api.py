@@ -31,7 +31,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from src.agent import FaqBot
+from src.agent import FaqBot, answer_cache_stats
 from src import config, logger
 
 __pid = os.getpid()
@@ -80,6 +80,8 @@ class AskResponse(BaseModel):
     vectorizer: str
     # W2 安全层：把脱敏命中 / 注入规则透传给前端（调试 & 前端展示用）
     security: dict | None = None
+    # 是否命中答案缓存（便于观察缓存效果；缓存查找在安全层之后，不会绕过限流）
+    cache_hit: bool = False
 
 
 class SuggestResponse(BaseModel):
@@ -92,6 +94,7 @@ class HealthResponse(BaseModel):
     intents: int = 0
     questions: int = 0
     vectorizer: str = ""
+    cache: dict | None = None
 
 
 # ------------------------------------------------------------------ lifespan
@@ -158,6 +161,7 @@ def health():
         intents=s["intents"],
         questions=s["questions"],
         vectorizer=s["vectorizer"],
+        cache=answer_cache_stats(),
     )
 
 
@@ -228,6 +232,7 @@ def ask(req: AskRequest, request: Request):
         trace_id=trace_id,
         vectorizer=result.get("vectorizer", ""),
         security=result.get("security"),
+        cache_hit=bool(result.get("cache_hit", False)),
     )
 
 

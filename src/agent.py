@@ -13,13 +13,31 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 import time
 from pathlib import Path
 
 from . import config, logger, preprocess
 from .ranker import build_ranker
 from .retriever import Retriever
+from .cache import TTLCache, build_cache_key
 from .vectorizer import TfidfVectorizerImpl, build_vectorizer
+
+# ------------------------------------------------------------------ 抗并发
+# 答案缓存：归一化 query → 语料命中结果（只缓存 matched=True，见 src/cache.py）
+_answer_cache = TTLCache(maxsize=config.ANSWER_CACHE_SIZE,
+                         ttl=config.ANSWER_CACHE_TTL)
+
+# 慢路径并发闸：兜底链路单次 1.4~8s，不设闸会把线程池占满，
+# 把 ~10ms 的检索请求一起拖垮（实测 27ms → 509ms）。
+_slow_path_gate = threading.BoundedSemaphore(
+    max(1, config.SLOW_PATH_MAX_CONCURRENCY)
+)
+
+
+def answer_cache_stats() -> dict:
+    """答案缓存统计（/health 暴露，便于看命中率）。"""
+    return _answer_cache.stats()
 
 
 def setup_stdio() -> None:
@@ -236,6 +254,32 @@ class FaqBot:
             logger.log_query(result)
             return result
 
+        # ---- 答案缓存 ----
+        # !! 位置很关键：必须在 enforce_security **之后** —— 放在前面就等于
+        #    让缓存绕过限流 / 注入检测 / 脱敏（tests/test_cache.py 有防回归）。
+        cache_key = None
+        if config.ANSWER_CACHE_ENABLED:
+            cache_key = build_cache_key(query)
+            cached = _answer_cache.get(cache_key)
+            if cached is not None:
+                result = dict(cached)
+                result.update({
+                    "query": query,
+                    "cache_hit": True,
+                    "latency_ms": round((time.perf_counter() - t0) * 1000, 2),
+                    "vectorizer": self.vectorizer.name,
+                    "security": {
+                        "reason": "",
+                        "pii_hits": list(sec_pre.pii_hits),
+                        "injection_rules": list(sec_pre.injection_rules),
+                    },
+                    "user_id": user_id,
+                    "trace_id": trace_id,
+                    "client_ip": client_ip,
+                })
+                logger.log_query(result)
+                return result
+
         # ---- 在线链路：只 transform，绝不 fit ----
         # 预处理由 Retriever 内部统一执行，保证与建索引时完全一致
         hits = self.retriever.search(query, top_k=top_k)
@@ -271,22 +315,35 @@ class FaqBot:
             #      全站瘫痪。现在 budget 检查已下沉到 router 的 LLM
             #      分支（真正调 LLM 前一刻），只有 LLM 通道受影响。
             sanitized_for_llm = sec_pre.sanitized_query
-            if getattr(config, "FALLBACK_ROUTER_ENABLED", False):
-                from .fallback import dispatch
-                # !! 关键：dispatch() 只能调一次。
-                #    路由器内部会触发 LLM / 天气 API，调两次 = 双倍费用 + 双倍延迟。
-                # 把脱敏后的 query 透传给 LLM 通道；路由器分类仍用原 query
-                decision = dispatch(query, sanitized_query=sanitized_for_llm)
-                answer = decision.answer
-                fallback_info = {
-                    "type": decision.query_type.value,
-                    "source": decision.source,
-                    "rule": decision.rule,
-                }
+            # ---- 慢路径隔离 ----
+            # 兜底链路单次 1.4~8s，与 ~10ms 的检索共用线程池。这里限制其并发：
+            # 拿不到闸位就立刻返回固定兜底话术（快速降级），避免慢请求把线程
+            # 占满、让检索路径一起排队（实测劣化 19 倍）。
+            if not _slow_path_gate.acquire(blocking=False):
+                answer = config.FALLBACK_TEXT
+                fallback_info = {"type": "overload", "source": "fixed",
+                                 "rule": "slow_path_saturated"}
             else:
-                answer = fallback(query, hits, self.threshold)
-                fallback_info = {"type": "legacy", "source": config.FALLBACK_MODE,
-                                 "rule": ""}
+                try:
+                    if getattr(config, "FALLBACK_ROUTER_ENABLED", False):
+                        from .fallback import dispatch
+                        # !! 关键：dispatch() 只能调一次。
+                        #    路由器内部会触发 LLM / 天气 API，调两次 = 双倍费用 + 双倍延迟。
+                        # 把脱敏后的 query 透传给 LLM 通道；路由器分类仍用原 query
+                        decision = dispatch(query, sanitized_query=sanitized_for_llm)
+                        answer = decision.answer
+                        fallback_info = {
+                            "type": decision.query_type.value,
+                            "source": decision.source,
+                            "rule": decision.rule,
+                        }
+                    else:
+                        answer = fallback(query, hits, self.threshold)
+                        fallback_info = {"type": "legacy",
+                                         "source": config.FALLBACK_MODE,
+                                         "rule": ""}
+                finally:
+                    _slow_path_gate.release()
 
             # 汇总 PII / injection 命中
             all_pii_hits = list(set(all_pii_hits) | set(sec_pre.pii_hits))
@@ -313,10 +370,25 @@ class FaqBot:
                             "rerank_score": (round(h.rerank_score, 4)
                                              if h.rerank_score is not None else None)}
                            for h in hits],
+            "cache_hit": False,
             "user_id": user_id,
             "trace_id": trace_id,
             "client_ip": client_ip,
         }
+
+        # ---- 写缓存：只缓存语料命中（确定性结果），兜底类不缓存 ----
+        if matched and cache_key is not None:
+            _answer_cache.set(cache_key, {
+                "answer": result["answer"],
+                "matched": True,
+                "tag": result["tag"],
+                "score": result["score"],
+                "rerank_score": result["rerank_score"],
+                "matched_question": result["matched_question"],
+                "top_guess": result["top_guess"],
+                "fallback": None,
+                "candidates": result["candidates"],
+            })
 
         logger.log_query(result)
         return result
@@ -324,6 +396,8 @@ class FaqBot:
     # -------------------------------------------------------------- 语料热更新
     def reload(self) -> tuple[int, int]:
         """重新加载语料并重建索引，无需重启服务。"""
+        # 语料换了，上一版语料的缓存答案必须作废，否则会继续返回旧内容
+        _answer_cache.clear()
         self.intents = load_corpus(self.corpus_path)
         self.records = flatten(self.intents)
         # !! 关键：reload 必须按当前向量化器类型走同一条预处理路径

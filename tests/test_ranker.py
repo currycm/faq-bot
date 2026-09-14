@@ -92,6 +92,19 @@ def tfidf_bot():
     return FaqBot(vectorizer_type="tfidf")
 
 
+@pytest.fixture(autouse=True)
+def _no_answer_cache(monkeypatch):
+    """本模块用替身换掉 ranker，需要每次 ask 都真的跑一遍检索 + 精排。
+
+    答案缓存（src/cache.py）按归一化 query 命中，第二次同样问法会**直接返回
+    上次结果、跳过 ranker** —— 那样这个用例就测不到精排阈值了。
+    所以这里显式关掉缓存，把关注点隔离干净。
+    （等价约束：运行期替换 ranker / 改阈值不会反映到已缓存的问法上；
+      生产里这些是启动期静态配置，且 reload() 会清缓存。）
+    """
+    monkeypatch.setattr(config, "ANSWER_CACHE_ENABLED", False)
+
+
 def test_agent_matching_uses_rerank_threshold(tfidf_bot, monkeypatch):
     """精排分高 → 命中；精排分低但余弦分很高 → 仍拒答（量纲已解耦）。"""
     monkeypatch.setattr(config, "RERANK_THRESHOLD", 0.8)

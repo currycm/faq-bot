@@ -175,6 +175,19 @@ class BgeVectorizerImpl(BaseVectorizer):
                 "（sentence-transformers 会自动安装 torch CPU 版本）"
             ) from exc
 
+        # ---- CPU 推理线程数 ----
+        # torch 默认每个算子吃满所有核；而 FastAPI 的同步端点跑在线程池里
+        # （默认 40 线程），两者相乘 = 严重过订阅。CPU 推理靠多进程并行
+        # （gunicorn -w），不是进程内多线程。（config.TORCH_NUM_THREADS 可调）
+        try:
+            import torch
+            _prev = torch.get_num_threads()
+            torch.set_num_threads(config.TORCH_NUM_THREADS)
+            print(f"[vectorizer:bge] torch 线程数 {_prev} → "
+                  f"{config.TORCH_NUM_THREADS}（避免并发下的线程过订阅）")
+        except Exception as exc:                       # 不因设置失败而影响启动
+            print(f"[vectorizer:bge] 设置 torch 线程数失败（忽略）：{exc}")
+
         # trust_remote_code=False：BGE-small-zh-v1.5 是官方模型，无需自定义代码
         self.model = SentenceTransformer(self.model_name, device=self.device)
         self.model.eval() if hasattr(self.model, "eval") else None
