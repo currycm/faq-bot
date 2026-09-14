@@ -271,7 +271,7 @@ def build() -> str:
     L.append("")
     for it in guidance:
         m = it["_meta"]
-        L.append(f"`{it['tag']}` 是唯一的 `guidance` 型：`source={m['source']}`、`title={m['title']}`、`date={m['date']}`。")
+        L.append(f"`{it['tag']}` 是 `guidance` 型（无原文可摘）：`source={m['source']}`、`title={m['title']}`、`date={m['date']}`。")
         L.append("")
         L.append(f"> {m['note']}")
         L.append("")

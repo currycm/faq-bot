@@ -1,9 +1,9 @@
 # 无溯源意图清单（unsourced intents）
 
-- **语料快照**：`data/qa_corpus.json` 1.6.0，49 意图 / 411 问法
+- **语料快照**：`data/qa_corpus.json` 1.7.0，50 意图 / 417 问法
 - **口径**：`_meta` 缺失 —— 既没有官方通知原文可摘，也没有显式标注为「引导型」
 - **生成方式**：`python scripts/report_unsourced.py`（规则可重算，非手填）
-- **结论**：**22 / 49 个意图无溯源**
+- **结论**：**22 / 50 个意图无溯源**
 
 > 风险分级由两条信号自动判定：答案里是否出现**具体校方事实**（日期/时刻/金额/数量/电话/网址/地点），
 > 以及是否带**兜底措辞**（「以…为准」这类自我限定）。
@@ -14,7 +14,7 @@
 |---|---|---|---|
 | `real_notice_v3` | 24 | ✅ 有官方通知原文 | 全部是部门前缀 `jwc_` / `xsc_` / `xxh_`，含 `url` + `title` + `date` |
 | `official_doc` | 2 | ✅ 有官方文档/页面 | `dorm_repair`, `psych_counseling`，含 `url` + `title`，来源为官方 PDF/网页（v1.6.0 新增）|
-| `guidance` | 1 | ⚠️ 有标注、无原文 | `jwc_major_change`，正文已声明以官方为准 |
+| `guidance` | 2 | ⚠️ 有标注、无原文 | `jwc_major_change`, `off_campus_info`，正文已声明以官方为准 |
 | **无 `_meta`** | **22** | ❌ **无溯源** | 本清单主体，全部是话题前缀（`library_` / `card_` / `dorm_` …）|
 
 > ⚠️ **关于顶层 `source` 字段**：本清单里标「无 `_meta`」的意图中，有 24 条带顶层 `source`
@@ -200,9 +200,13 @@
 | `xxh_student_email` | `real_notice_v3` | 数智化处 | [关于在校学生开通校园邮箱的通知](https://xxh.niit.edu.cn/0f/09/c2265a69385/page.htm) | 2025-07-03 |
 | `xxh_wifi_drop` | `real_notice_v3` | 数智化处 | [校园无线网终端频繁掉线问题的参考处理方案](https://xxh.niit.edu.cn/02/54/c2265a66132/page.htm) | 2025-03-20 |
 
-`jwc_major_change` 是唯一的 `guidance` 型：`source=教务处`、`title=校内转专业办理指引（流程引导型，非通知摘录）`、`date=2026-09-11`。
+`jwc_major_change` 是 `guidance` 型（无原文可摘）：`source=教务处`、`title=校内转专业办理指引（流程引导型，非通知摘录）`、`date=2026-09-11`。
 
 > 本地未采集到学校转专业通知原文，本答案只写通用流程与国家标准层面的框架，不含任何校方具体日期 / 比例 / 门槛。取得官方原文后应替换为「通知摘录型」答案。
+
+`off_campus_info` 是 `guidance` 型（无原文可摘）：`source=项目服务边界说明`、`title=服务范围说明`、`date=None`。
+
+> 这是刻意的产品边界，不是校方政策，没有官方原文可引。此前「学校附近哪家火锅好吃」会被 canteen_info 以 0.6563 的余弦分抢走，答成校内食堂营业时间（答非所问）—— 新增本意图后由它承接。若日后接入周边生活服务数据，应改为 official_doc / real_notice_v3。
 
 ### 无 `_meta` 但带顶层 `source` 文本声明的意图（不计入溯源）
 

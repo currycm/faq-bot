@@ -1,7 +1,7 @@
 {
   "meta": {
-    "version": "1.0.3",
-    "updated_at": "2026-09-11",
+    "version": "1.0.4",
+    "updated_at": "2026-09-14",
     "guideline": "测试问句必须与 data/qa_corpus.json 中的问法不同 —— 换同义词、改语序、加口语助词、故意写错别字。拿训练集当测试集，模型只是背下了答案，测出来 100% 准确率毫无意义。expected_tag 为 null 表示『这个问题机器人不该回答』，用于检查是否乱答。",
     "how_to_extend": "每次线上收集到未命中问题（见 logs/unmatched.jsonl），人工归纳后补充到语料，并在这里补 2-3 条改写问句。"
   },
@@ -156,7 +156,7 @@
     },
     {
       "query": "学校附近哪家火锅好吃",
-      "expected_tag": null
+      "expected_tag": "off_campus_info"
     },
     {
       "query": "python怎么安装第三方库",
@@ -549,6 +549,14 @@
     {
       "query": "选课截止之后还能换别的课吗",
       "expected_tag": "course_selection"
+    },
+    {
+      "query": "学校附近有啥好吃的小店",
+      "expected_tag": "off_campus_info"
+    },
+    {
+      "query": "校门外哪儿能配副眼镜",
+      "expected_tag": "off_campus_info"
     }
   ]
 }
