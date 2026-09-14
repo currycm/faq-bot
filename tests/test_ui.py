@@ -215,6 +215,26 @@ def test_debug_shown_when_enabled():
     print("  FAQ_DEBUG=1 时调试信息已显示")
 
 
+def test_scroll_not_lost_on_feedback_click():
+    """防回归：点「有用/没用」不能让对话区滚回顶部。
+
+    2026-09 修复的真实 bug：点击让按钮**获得焦点**，重跑把该按钮从 DOM 卸载后，
+    浏览器会把最近的可滚动祖先（qa_history）滚回顶部 —— 用户正在读的位置被甩走。
+    app.py 的 _AUTOSCROLL_JS 里对应三段逻辑，缺一段就会退回旧行为：
+      1. __qaClickHandler：捕获阶段挂点击监听（点容器内任何按钮都覆盖）
+      2. blur()：点击后让按钮失焦 —— 根因修法，从源头避免"卸载聚焦元素"
+      3. __qaSnapTop + 多帧还原：兜底，万一位置还是被重置，逐帧放回去
+    这里做源码级断言。真正的行为验证必须用真浏览器（AppTest 覆盖不到 iframe 内
+    的父窗口 JS 与滚动位置）—— 见 skill `streamlit-ui-fix-and-verify`。
+    """
+    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    assert "__qaClickHandler" in src, "点击监听钩子没了？点「有用」会跳回顶部"
+    assert "blur()" in src, "失焦修法（根因）没了？"
+    assert "__qaSnapTop" in src, "滚动位置快照/还原（兜底）没了？"
+    # 消息真的变多时仍然要滚到底，别把主功能改掉
+    assert "el.scrollTo({ top: el.scrollHeight" in src, "新消息自动滚到底的功能没了？"
+
+
 def test_suggestions_above_input():
     """防回归：7 个高频问题必须渲染在输入栏上方（代码顺序 = 视觉顺序）。
 
@@ -327,6 +347,7 @@ if __name__ == "__main__":
     test_no_badge_html()
     test_debug_hidden_by_default()
     test_debug_shown_when_enabled()
+    test_scroll_not_lost_on_feedback_click()
     test_feedback_button()
     print("=" * 60)
     print("  前端测试全部通过")

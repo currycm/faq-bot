@@ -91,7 +91,17 @@ _DEBUG_ENABLED = os.environ.get("FAQ_DEBUG", "").strip().lower() in ("1", "true"
 #   （排查时表现为"代码明明写对了却没反应"，很费时间）。
 # 关键点二：这里刻意**用普通字符串 + replace 拼 count**，不用 f-string。
 #   脚本里全是 JS 的 `{}`（对象字面量），塞进 f-string 要写成 `{{}}`，
-#   改一次错一次（之前 ui_style.py 的 CSS 就栽在这上面，直接把页面搞白屏）。
+#   改一次错一次（之前 ui_style.py 的 CSS 就栽在这上面，直接把页面白屏）。
+#
+# 关键点三（2026-09 修复，真机 Playwright 实测定位）：
+#   点对话区里的按钮（有用/没用/候选问题）会让**按钮获得焦点**；
+#   重跑把该按钮从 DOM 卸载后，浏览器会把最近的可滚动祖先
+#   —— 也就是 qa_history —— **滚回顶部**。
+#   对照实验（容器 scrollTop 可辨）：
+#     · 纯 JS `btn.click()`（不聚焦）：538 → 526（保持，仅内容变矮 12px）
+#     · `btn.focus(); btn.click()`：  517 → **0**（跳顶）
+#   所以修复不是"重跑后一律不滚"，而是"点击那一刻先记住位置，重跑完放回去"。
+#   快照/计数都挂在**父窗口**上 —— 组件 iframe 每次重跑都会重建，父窗口变量不会。
 _AUTOSCROLL_JS = """
 <script>
 (function () {
@@ -99,22 +109,61 @@ _AUTOSCROLL_JS = """
   var n = __COUNT__, prev = w.__qaScrollCount;
   w.__qaScrollCount = n;
 
-  // 只在消息变多时滚。组件每次重跑都会重建 iframe，但计数挂在父窗口上，
-  // 跨重跑保留 —— 所以点「有用 / 重置 / 切 tab」这类重跑不会把
-  // 用户正在读的位置弹到底部。
-  if (prev !== undefined && n <= prev) return;
+  var SEL = '[class*="st-key-qa_history"]';
+  function box() { return doc.querySelector(SEL); }
 
-  var el = doc.querySelector('[class*="st-key-qa_history"]');
-  if (!el) return;
+  // 每轮重跑都重挂点击监听 —— 组件 iframe 每轮都会被销毁重建，它挂到「父文档」
+  // 上的监听会随之失效（挂在父窗口上的变量则保留）。只挂一次会静默失灵：
+  // 表现为回调根本不进。
+  if (w.__qaClickHandler) {
+    doc.removeEventListener('click', w.__qaClickHandler, true);
+  }
+  w.__qaClickHandler = function (e) {
+    var t = e.target, el = box();
+    if (!t || !t.closest || !el || !t.closest(SEL)) return;
 
-  var reduce = w.matchMedia && w.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var behavior = reduce ? 'auto' : 'smooth';
+    // 记下点击前的滚动位置，作为重跑后的还原目标
+    w.__qaSnapTop = el.scrollTop;
 
-  // 等两帧：第一帧让 Streamlit 把新消息的 DOM 挂上去，
-  // 第二帧 scrollHeight 才是最终值，否则会少滚一截。
+    // 2026-09 修复「点『有用』后页面滚回顶部」的根因：
+    // 点击让按钮**获得焦点**；重跑把该按钮从 DOM 卸载后，浏览器会把最近的可
+    // 滚动祖先（也就是 qa_history）滚回顶部。
+    // 直接让按钮失焦，就没有"卸载聚焦元素"这回事 —— 位置原地不动。
+    // 该按钮点完本来就会被「已反馈」替换掉，失焦不影响它的任何功能。
+    // 键盘激活（Enter/Space）时浏览器的激活序列可能把焦点给回去，补一个延后一拍的 blur。
+    var btn = t.closest('button');
+    if (btn) {
+      btn.blur();
+      w.setTimeout(function () { try { btn.blur(); } catch (err) {} }, 0);
+    }
+  };
+  doc.addEventListener('click', w.__qaClickHandler, true);
+
   w.requestAnimationFrame(function () {
     w.requestAnimationFrame(function () {
-      el.scrollTo({ top: el.scrollHeight, behavior: behavior });
+      // 消息真的变多 → 滚到底（快照作废）
+      if (prev === undefined || n > prev) {
+        w.__qaSnapTop = null;
+        var el = box();
+        if (!el) return;
+        var reduce = w.matchMedia && w.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        el.scrollTo({ top: el.scrollHeight, behavior: reduce ? 'auto' : 'smooth' });
+        return;
+      }
+
+      // 其它重跑（点「有用」等）→ 把位置放回去。
+      // 用「多帧重试」而不是一次赋值：DOM 节点可能正在被替换，而且重置有可能
+      // 发生在我们赋值**之后**，一次赋值会被反超；逐帧重试能压住。
+      var want = w.__qaSnapTop;
+      if (want === null || want === undefined) return;
+      var tries = 20;
+      var apply = function () {
+        var el = box();
+        if (el && el.scrollTop !== want) el.scrollTop = want;
+        if (el && el.scrollTop === want) { w.__qaSnapTop = null; return; }
+        if (--tries > 0) w.requestAnimationFrame(apply);
+      };
+      apply();
     });
   });
 })();
