@@ -58,6 +58,89 @@ def clear_answer_cache() -> None:
     _answer_cache.clear()
 
 
+def _empty_result(query: str) -> dict:
+    """空 query 的提前返回 —— 从 ask() 主路径剥出来的**冷分支**。
+
+    独立成函数有两个作用：主函数里只剩一行 `return _empty_result(query)`，
+    热路径的字节码保持线性、不被这段一次性构造淹没；这段字典本身也不会
+    再被解释器当成"每次都要走一遍"的分支。
+
+    !! 字段**刻意少于**正常返回（没有 cache_hit / vectorizer / user_id …），
+    这是既有 API 行为而非遗漏，`tests/test_hot_path.py` 里钉着 KeyError 级断言，
+    **不要顺手"补齐"** —— 那会改变对外契约。
+    """
+    return {
+        "query": query,
+        "answer": "请输入你的问题～",
+        "matched": False,
+        "tag": None,
+        "score": 0.0,
+        "latency_ms": 0,
+        "fallback": None,
+        "candidates": [],
+        "security": {"reason": "", "pii_hits": [], "injection_rules": []},
+    }
+
+
+def _refusal_result(query: str, sec, latency_ms: float, vectorizer: str,
+                    user_id: str | None, trace_id: str | None,
+                    client_ip: str | None) -> dict:
+    """W2 安全层拒答的返回 —— 冷分支（正常流量里占比极低）。
+
+    同样刻意不含 `cache_hit` / `rerank_score`（这段的字段集与主路径本来就不一致，
+    契约由 tests/test_hot_path.py 钉死）。注意 `pii_hits` 直接引用 sec 的列表、
+    不做拷贝 —— 与改造前逐字一致，避免顺手改变别名语义。
+    """
+    return {
+        "query": query,
+        "answer": sec.refusal_text,
+        "matched": False,
+        "tag": None,
+        "score": 0.0,
+        "matched_question": None,
+        "top_guess": None,
+        "latency_ms": latency_ms,
+        "vectorizer": vectorizer,
+        "fallback": {"type": "security", "source": "fixed",
+                     "rule": sec.reason},
+        "security": {
+            "reason": sec.reason,
+            "pii_hits": sec.pii_hits,
+            "injection_rules": sec.injection_rules,
+        },
+        "candidates": [],
+        "user_id": user_id,
+        "trace_id": trace_id,
+        "client_ip": client_ip,
+    }
+
+
+def _cache_hit_result(cached: dict, query: str, latency_ms: float,
+                      vectorizer: str, sec, user_id: str | None,
+                      trace_id: str | None, client_ip: str | None) -> dict:
+    """答案缓存命中的返回 —— 高频，但构造逻辑独立，抽出来让主路径一眼能读完。
+
+    缓存体只存"和业务相关"的字段，每请求字段（query / latency_ms / 身份…）
+    在这里补齐。所以本函数与 `_write_cache` 是一对，改一边必须改另一边。
+    """
+    result = dict(cached)
+    result.update({
+        "query": query,
+        "cache_hit": True,
+        "latency_ms": latency_ms,
+        "vectorizer": vectorizer,
+        "security": {
+            "reason": "",
+            "pii_hits": list(sec.pii_hits),
+            "injection_rules": list(sec.injection_rules),
+        },
+        "user_id": user_id,
+        "trace_id": trace_id,
+        "client_ip": client_ip,
+    })
+    return result
+
+
 def setup_stdio() -> None:
     """Windows 控制台默认编码可能是 GBK，打印中文会乱码。强制 UTF-8。"""
     for stream in (sys.stdout, sys.stderr):
@@ -196,11 +279,8 @@ class FaqBot:
         t0 = time.perf_counter()
         query = (query or "").strip()
         if not query:
-            return {"query": query, "answer": "请输入你的问题～", "matched": False,
-                    "tag": None, "score": 0.0, "latency_ms": 0,
-                    "fallback": None, "candidates": [],
-                    "security": {"reason": "", "pii_hits": [],
-                                 "injection_rules": []}}
+            # 冷分支：空输入。抽成 _empty_result()，主路径不留这段一次性构造
+            return _empty_result(query)
 
         top_k = top_k or config.TOP_K
 
@@ -210,28 +290,12 @@ class FaqBot:
             query, ip=client_ip, user_id=user_id, will_call_llm=False,
         )
         if not sec_pre.allowed:
-            result = {
-                "query": query,
-                "answer": sec_pre.refusal_text,
-                "matched": False,
-                "tag": None,
-                "score": 0.0,
-                "matched_question": None,
-                "top_guess": None,
-                "latency_ms": round((time.perf_counter() - t0) * 1000, 2),
-                "vectorizer": self.vectorizer.name,
-                "fallback": {"type": "security", "source": "fixed",
-                             "rule": sec_pre.reason},
-                "security": {
-                    "reason": sec_pre.reason,
-                    "pii_hits": sec_pre.pii_hits,
-                    "injection_rules": sec_pre.injection_rules,
-                },
-                "candidates": [],
-                "user_id": user_id,
-                "trace_id": trace_id,
-                "client_ip": client_ip,
-            }
+            # 冷分支：被安全层拦下。构造逻辑见 _refusal_result()
+            result = _refusal_result(
+                query, sec_pre,
+                round((time.perf_counter() - t0) * 1000, 2),
+                self.vectorizer.name, user_id, trace_id, client_ip,
+            )
             logger.log_query(result)
             return result
 
@@ -243,21 +307,12 @@ class FaqBot:
             cache_key = build_cache_key(query)
             cached = _answer_cache.get(cache_key)
             if cached is not None:
-                result = dict(cached)
-                result.update({
-                    "query": query,
-                    "cache_hit": True,
-                    "latency_ms": round((time.perf_counter() - t0) * 1000, 2),
-                    "vectorizer": self.vectorizer.name,
-                    "security": {
-                        "reason": "",
-                        "pii_hits": list(sec_pre.pii_hits),
-                        "injection_rules": list(sec_pre.injection_rules),
-                    },
-                    "user_id": user_id,
-                    "trace_id": trace_id,
-                    "client_ip": client_ip,
-                })
+                # 热路径，但构造逻辑独立 → 抽成 _cache_hit_result()
+                result = _cache_hit_result(
+                    cached, query,
+                    round((time.perf_counter() - t0) * 1000, 2),
+                    self.vectorizer.name, sec_pre, user_id, trace_id, client_ip,
+                )
                 logger.log_query(result)
                 return result
 
