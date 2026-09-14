@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.agent import FaqBot
+from src.agent import FaqBot, clear_answer_cache
 import evaluate as ev
 
 
@@ -53,6 +53,12 @@ def main() -> None:
 
         build_ms = bot.stats()["build_ms"]
 
+        # !! 答案缓存是模块级全局、且 key 只由问句决定（不区分检索方案）。
+        #    不清空的话，上一个方案（TF-IDF）会把「命中但 tag 错」的结果写进缓存，
+        #    下一个方案（BGE）直接命中 → 召回率被拉低、延迟被缓存命中压低，
+        #    而且**不报任何错**。延迟统计也会被上一轮的缓存命中污染。
+        clear_answer_cache()
+
         # 预热一次，避免首查询懒加载污染 P99
         bot.ask("测试预热")
         latencies: list[float] = []
@@ -61,6 +67,8 @@ def main() -> None:
             bot.ask(c["query"])
             latencies.append((time.perf_counter() - t0) * 1000.0)
 
+        # 延迟循环本身也写满了缓存，评测前再清一次，保证是真实计算
+        clear_answer_cache()
         metrics, _ = ev.evaluate(bot, cases)
         print(f"{name:<12}{build_ms:>9.1f}{metrics['recall@1']:>8.1%}{metrics['top3']:>8.1%}"
               f"{metrics['unmatched_rate']:>8.1%}{metrics['wrong_rate']:>8.1%}"

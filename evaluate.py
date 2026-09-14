@@ -22,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from src.agent import FaqBot, setup_stdio          # noqa: E402
+from src.agent import FaqBot, clear_answer_cache, setup_stdio  # noqa: E402
 from src import config                              # noqa: E402
 
 
@@ -130,6 +130,9 @@ def scan_threshold(bot: FaqBot, cases: list[dict]) -> None:
     best = None
     t = 0.05
     while t <= 0.9001:
+        # !! 答案是全局缓存的，不清空的话第一轮之后全是缓存命中，
+        #    18 个阈值会得到 18 行完全一样的数字（曲线退化成直线）。
+        clear_answer_cache()
         m, _ = evaluate(bot, cases, threshold=round(t, 2))
         print(f"{m['threshold']:>6.2f}{m['recall@1']:>10.1%}{m['top3']:>10.1%}"
               f"{m['unmatched_rate']:>10.1%}{m['wrong_rate']:>10.1%}"

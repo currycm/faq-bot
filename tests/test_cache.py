@@ -139,6 +139,36 @@ def test_cache_never_bypasses_rate_limit(bot, monkeypatch):
     assert blocked["fallback"]["type"] == "security"
 
 
+def test_clear_answer_cache_is_public_and_effective(bot, monkeypatch):
+    """全局答案缓存必须能被显式清空。
+
+    真实踩坑：`_answer_cache` 是**模块级全局**的，且 key 只由归一化后的问句决定、
+    **不区分检索方案**。所以任何「同一进程内换方案 / 换阈值 / 换语料重跑」的脚本，
+    都必须在每轮开跑前清空，否则会拿到上一轮的答案 —— 指标被污染，且**不报错**：
+
+    - `scripts/benchmark_retrieval.py` 依次跑 TF-IDF / BGE / BGE+精排，
+      TF-IDF 先跑把大量「命中但 tag 错」的结果写进缓存，BGE 再跑全部命中，
+      召回@1 被从 99.3% 拉到 95.6%，P50 延迟也被缓存命中压低（假的）。
+    - `evaluate.py --scan` 在同一 bot 上扫 18 个阈值，只有第一轮是真实计算，
+      后 17 轮全是缓存命中，阈值曲线退化成一条直线。
+
+    这两个脚本已经修好（每轮前调 `clear_answer_cache()`），本用例守住这个 helper。
+    """
+    monkeypatch.setattr(agent_mod.config, "ANSWER_CACHE_ENABLED", True)
+    agent_mod._answer_cache.clear()
+
+    r1 = bot.ask(Q, user_id="cc-1", client_ip="10.13.1.1")
+    assert r1["matched"] and r1["cache_hit"] is False
+
+    r2 = bot.ask(Q, user_id="cc-2", client_ip="10.13.1.2")
+    assert r2["cache_hit"] is True, "第二次同样问法应命中缓存"
+
+    agent_mod.clear_answer_cache()
+    r3 = bot.ask(Q, user_id="cc-3", client_ip="10.13.1.3")
+    assert r3["cache_hit"] is False, "清空后同一问法必须重新算，不能再命中上一轮结果"
+    assert r3["answer"] == r1["answer"], "重新算出来的答案应当一致（缓存没改变语义）"
+
+
 def test_cache_disabled_still_works(bot, monkeypatch):
     monkeypatch.setattr(agent_mod.config, "ANSWER_CACHE_ENABLED", False)
     agent_mod._answer_cache.clear()

@@ -40,6 +40,24 @@ def answer_cache_stats() -> dict:
     return _answer_cache.stats()
 
 
+def clear_answer_cache() -> None:
+    """清空答案缓存。
+
+    !! 缓存是**模块级全局**的，且不区分检索方案（key 只由归一化后的问句决定）。
+    所以任何「同一进程内换方案 / 换阈值 / 换语料重跑」的脚本，都必须在每次开跑前
+    显式清空，否则会拿到上一轮的缓存答案 —— 表现为指标被上一轮污染、且**不报错**：
+
+    - `scripts/benchmark_retrieval.py` 依次跑 TF-IDF / BGE / BGE+精排，
+      TF-IDF 先跑会把（大量错 tag 的）结果写进缓存，BGE 再跑直接命中，
+      召回@1 被从 99.3% 拉到 95.6%，P50 延迟也被缓存命中压到 1.76ms（假的）。
+    - `evaluate.py --scan` 在同一 bot 上扫 18 个阈值，只有第一轮是真实计算，
+      后 17 轮全是缓存命中，阈值曲线退化成一条直线。
+
+    语料热更新走 `FaqBot.reload()`，它内部已经调了这个函数。
+    """
+    _answer_cache.clear()
+
+
 def setup_stdio() -> None:
     """Windows 控制台默认编码可能是 GBK，打印中文会乱码。强制 UTF-8。"""
     for stream in (sys.stdout, sys.stderr):
