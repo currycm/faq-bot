@@ -138,9 +138,14 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
     || exit 1
 
 # 启动命令：Gunicorn + Uvicorn worker × 2
-# !! 注意：BGE 模型每个 worker 进程都会加载一次（~400MB 内存/进程）
+# !! --preload：master 先把 api 模块 import 完（含模型加载）再 fork worker，
+#    子进程靠写时复制（COW）共享同一份模型内存；否则每个 worker 各建一份
+#    （~400MB/进程，2 worker 就是 ~800MB）。
+#    它依赖 api.py 末尾的 `bot = _load_bot()`（导入期构建）—— 模型若在
+#    lifespan 里建，preload 共享不到，等于白加。
 #    4 核 8GB 服务器建议 -w 2；8 核 16GB 可以 -w 4
 CMD ["gunicorn", "api:app", \
+     "--preload", \
      "-w", "2", \
      "-k", "uvicorn.workers.UvicornWorker", \
      "-b", "0.0.0.0:8000", \

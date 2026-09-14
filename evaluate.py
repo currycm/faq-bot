@@ -165,6 +165,8 @@ def main() -> None:
     parser.add_argument("--threshold", type=float, help="临时指定阈值，不改动配置文件")
     parser.add_argument("--backend", choices=["tfidf", "bert", "bge"],
                         help="临时指定向量化方案，覆盖 config.VECTORIZER_TYPE")
+    parser.add_argument("--min-recall", type=float, default=None,
+                        help="回归门禁：召回率@1 低于该值即非零退出（CI 用，如 0.95）")
     args = parser.parse_args()
 
     bot = FaqBot(vectorizer_type=args.backend)
@@ -206,6 +208,20 @@ def main() -> None:
         print("  4. 分数普遍偏低 → 词面匹配到瓶颈了，考虑升级 BERT 向量化\n")
     elif not errors:
         print("全部答对。这时要警惕：测试集可能太简单，或已被语料污染。\n")
+
+    # ---------------------------------------------------------------- 回归门禁
+    # CI 此前只跑单测：改检索 / 语料后召回率掉了，测试仍全绿（测试集固定，
+    # 且不校验效果指标）。--min-recall 把「最小召回率基线」变成可断言的出口，
+    # 由 .github/workflows/ci.yml 调用。
+    if args.min_recall is not None:
+        got = metrics["recall@1"]
+        if got < args.min_recall:
+            hit = round(got * metrics["answerable"])
+            print(f"!! 效果回归：召回率@1 {got:.1%} < 基线 {args.min_recall:.1%}"
+                  f"（{hit}/{metrics['answerable']} 条可答样本命中）")
+            print("   用 --show-error 看是哪些意图掉了，再决定补问法还是回滚改动。")
+            sys.exit(1)
+        print(f"OK 效果门禁：召回率@1 {got:.1%} ≥ 基线 {args.min_recall:.1%}")
 
 
 if __name__ == "__main__":

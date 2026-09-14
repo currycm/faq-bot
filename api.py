@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import os
 import sys
 import time
 import uuid
@@ -33,8 +34,31 @@ from pydantic import BaseModel, Field
 from src.agent import FaqBot
 from src import config, logger
 
+__pid = os.getpid()
+
 bot: FaqBot | None = None
 ready: bool = False
+
+
+def _load_bot() -> FaqBot:
+    """构建并预热 FaqBot（**在模块导入时调用**，见文件末尾）。
+
+    ⚠️ 为什么不在 lifespan 里建：gunicorn `--preload` 会让 master 进程先
+    import 本模块、再 fork worker —— 子进程通过写时复制（COW）共享这份模型
+    内存。若把构建放进 lifespan（每个 worker 各跑一次），每个 worker 仍会
+    各建一份，preload 就白加了。单进程（uvicorn 直起）时行为等价。
+    """
+    global bot, ready
+    print(f"[bot] 进程 {__pid} 加载 FaqBot…")
+    t0 = time.perf_counter()
+    b = FaqBot()
+    b.ask("图书馆几点开门")        # 预热：触发 BGE 懒加载 + 首次索引访问
+    s = b.stats()
+    bot = b
+    ready = True
+    print(f"[bot] ready: intents={s['intents']} vectorizer={s['vectorizer']} "
+          f"init={(time.perf_counter() - t0) * 1000:.0f}ms")
+    return b
 
 
 # ------------------------------------------------------------------ schema
@@ -73,30 +97,19 @@ class HealthResponse(BaseModel):
 # ------------------------------------------------------------------ lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """启动 / 关闭钩子：每个 worker 进程启动时跑一次。"""
-    global bot, ready
-    print(f"[lifespan] worker {__pid} 启动，加载 FaqBot…")
-    t0 = time.perf_counter()
-    bot = FaqBot()
-    # 预热：跑一次真实查询，触发 BGE 懒加载 + 首次索引访问
-    bot.ask("图书馆几点开门")
-    ready = True
-    elapsed = (time.perf_counter() - t0) * 1000
-    s = bot.stats()
-    print(f"[lifespan] ready: intents={s['intents']} "
-          f"vectorizer={s['vectorizer']} init={elapsed:.0f}ms")
+    """启动 / 关闭钩子：每个 worker 进程启动时跑一次。
+
+    模型构建与预热已移到**模块导入时**（见下方 `_load_bot` 与文件末尾的调用），
+    这里只留日志与关闭钩子 —— lifespan 保持轻量，gunicorn `--preload` 的
+    COW 共享才能真正生效。
+    """
+    print(f"[lifespan] worker {__pid} 启动（模型已随 preload 共享）")
     yield
     # 关闭钩子（目前无需清理，BGE 模型随进程退出）
     print(f"[lifespan] worker {__pid} 关闭")
 
 
 # ------------------------------------------------------------------ app
-__pid = 0  # 占位，lifespan 里赋值
-try:
-    import os as _os
-    __pid = _os.getpid()
-except Exception:
-    pass
 
 app = FastAPI(
     title="faq-bot",
@@ -222,3 +235,11 @@ def ask(req: AskRequest, request: Request):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("api:app", host="127.0.0.1", port=8000, reload=False)
+
+
+# ---------------------------------------------------------------- 启动时加载
+# !! 必须在**模块级**执行（导入即加载），不要挪进 lifespan：
+#    gunicorn --preload 在 master 里 import 完本模块后才 fork worker，
+#    子进程靠 COW 共享同一份模型内存；挪进 lifespan 就退化成"每 worker 一份"。
+#    放在文件末尾，让 app / 路由先定义好，加载失败的堆栈更干净。
+bot = _load_bot()
