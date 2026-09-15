@@ -1,9 +1,9 @@
 # 无溯源意图清单（unsourced intents）
 
-- **语料快照**：`data/qa_corpus.json` 1.8.0，50 意图 / 417 问法
+- **语料快照**：`data/qa_corpus.json` 1.11.0，72 意图 / 549 问法
 - **口径**：`_meta` 缺失 —— 既没有官方通知原文可摘，也没有显式标注为「引导型」
 - **生成方式**：`python scripts/report_unsourced.py`（规则可重算，非手填）
-- **结论**：**1 / 50 个意图无溯源**
+- **结论**：**1 / 72 个意图无溯源**
 
 > 风险分级由两条信号自动判定：答案里是否出现**具体校方事实**（日期/时刻/金额/数量/电话/网址/地点），
 > 以及是否带**兜底措辞**（「以…为准」这类自我限定）。
@@ -13,8 +13,8 @@
 | 类别 | 意图数 | 溯源状态 | 说明 |
 |---|---|---|---|
 | `real_notice_v3` | 24 | ✅ 有官方通知原文 | 全部是部门前缀 `jwc_` / `xsc_` / `xxh_`，含 `url` + `title` + `date` |
-| `official_doc` | 2 | ✅ 有官方文档/页面 | `dorm_repair`, `psych_counseling`，含 `url` + `title`，来源为官方 PDF/网页（v1.6.0 新增）|
-| `guidance` | 2 | ⚠️ 有标注、无原文 | `jwc_major_change`, `off_campus_info`，正文已声明以官方为准 |
+| `official_doc` | 18 | ✅ 有官方文档/页面 | `dorm_repair`, `psych_counseling`, `jwc_student_id_reissue`, `jwc_certificate_issue`, `jwc_certificate_correction`, `jwc_diploma_reissue`, `zs_contact`, `library_contact`, `library_service`, `library_book_lost`, `library_purchase`, `jwc_suspend_resume`, `jwc_exam_defer`, `jwc_graduation_project`, `major_intro`, `zs_admission_query`, `tuition_fee`, `dorm_summer_stay`，含 `url` + `title`，来源为官方 PDF/网页（v1.6.0 新增）|
+| `guidance` | 8 | ⚠️ 有标注、无原文 | `jwc_major_change`, `off_campus_info`, `zs_notice_addr_change`, `card_freeze`, `card_realname`, `dorm_electricity`, `academic_calendar`, `zs_score_line`，正文已声明以官方为准 |
 | `manual_verified` | 21 | 🟡 **人工核实，无原文** | 无 url 可引，但有核实对象与核实日期（见第三节）；可信度高于「作者推测」、低于「有原文可核」 |
 | **无 `_meta`** | **1** | ❌ **无溯源** | `campus_map_guide` |
 
@@ -66,6 +66,10 @@
 
 | 意图 | 类型 | 来源 | 通知/文档标题 | 日期 |
 |---|---|---|---|---|
+| `library_book_lost` | `official_doc` | 图书馆官网 | [违章处罚条例](https://tsg.niit.edu.cn/b3/74/c5899a45940/page.htm) | 2022-03-03 |
+| `library_contact` | `official_doc` | 图书馆官网 | [本馆电话](https://tsg.niit.edu.cn/bgdh/list.htm) | 2026-09-15 |
+| `library_purchase` | `official_doc` | 图书馆官网 | [资源荐购](https://tsg.niit.edu.cn/zyjg/list.htm) | 2026-09-15 |
+| `library_service` | `official_doc` | 图书馆官网 | [常见问题](https://tsg.niit.edu.cn/cjwt/list.htm) | 2026-09-15 |
 | `dorm_repair` | `official_doc` | 学工处 | [宿舍报修线上操作指南（企业微信 → 工作台 → 学工应用 → 宿舍报修）](https://xsc.niit.edu.cn/_upload/article/files/3c/c5/53850e734f1cbf1164e3f61cc23e/0b03ebba-dc97-40ed-99d7-6129251acd04.pdf) | 2026-09-14 |
 | `psych_counseling` | `official_doc` | 学工处 | [心理中心心理咨询安排与预约方式（微信公众号「心海导航」）](https://xsc.niit.edu.cn/b8/8d/c3816a47245/page.htm) | 2021-03-01 |
 | `xsc_academic_scholarship` | `real_notice_v3` | 学工处 | [南京工业职业技术大学优秀学生学业奖学金](https://xsc.niit.edu.cn/16/48/c3818a71240/page.htm) | 2025-11-17 |
@@ -75,6 +79,10 @@
 | `xsc_impoverish_certify` | `real_notice_v3` | 学工处 | [家庭经济困难学生认定](https://xsc.niit.edu.cn/13/0a/c3818a70410/page.htm) | 2025-10-14 |
 | `xsc_national_scholarship` | `real_notice_v3` | 学工处 | [关于开展2025年国家奖学金评选工作的通知](https://xsc.niit.edu.cn/13/96/c3793a70550/page.htm) | 2025-10-10 |
 | `xsc_veteran_aid` | `real_notice_v3` | 学工处 | [退役士兵国家助学金](https://xsc.niit.edu.cn/1f/1d/c3818a73501/page.htm) | 2026-04-15 |
+| `dorm_summer_stay` | `official_doc` | 学生工作部（处）官网 | [关于做好2024年暑期学生留校住宿工作的通知](https://xsc.niit.edu.cn/f0/26/c8239a61478/page.htm) | 2024-06-18 |
+| `major_intro` | `official_doc` | 招生信息网 | [学院及本科专业设置](https://zs.niit.edu.cn/xyjzysz/list.htm) | 2026-09-15 |
+| `zs_admission_query` | `official_doc` | 招生信息网 | [2026年高考招生（录取结果、通知书寄发情况查询）](https://zs.niit.edu.cn/0e/5b/c2896a69211/page.htm) | 2026-07-22 |
+| `zs_contact` | `official_doc` | 招生信息网 | [咨询方式](https://zs.niit.edu.cn/zxfs/list.htm) | 2026-09-15 |
 | `jwc_bachelor_degree` | `real_notice_v3` | 教务处 | [南京工业职业技术大学关于2026年8月授予本科毕业生学士学位的公示](https://jwc.niit.edu.cn/29/2e/c2370a76078/page.htm) | 2026-08-28 |
 | `jwc_cet_signup` | `real_notice_v3` | 教务处 | [关于做好2026年上半年全国大学英语四六级考试报名工作的通知](https://jwc.niit.edu.cn/1c/1d/c2370a72733/page.htm) | 2026-03-10 |
 | `jwc_classroom_closed` | `real_notice_v3` | 教务处 | [关于仙林校区及天堂校区教学楼限时封闭的通知](https://jwc.niit.edu.cn/23/7e/c2370a74622/page.htm) | 2026-06-05 |
@@ -86,12 +94,20 @@
 | `jwc_retake_signup` | `real_notice_v3` | 教务处 | [2025-2026学年第二学期重修报名通知](https://jwc.niit.edu.cn/1d/79/c2370a73081/page.htm) | 2026-03-26 |
 | `jwc_textbook_pickup` | `real_notice_v3` | 教务处 | [关于2026-2027-1学期教材征订结果的公示](https://jwc.niit.edu.cn/28/c8/c2370a75976/page.htm) | 2026-08-01 |
 | `jwc_veteran_transfer` | `real_notice_v3` | 教务处 | [关于做好我校2026年江苏省三年制高职（专科）退役大学生士兵'专转本'网上报名工作的通知](https://jwc.niit.edu.cn/1e/f0/c2370a73456/page.htm) | 2026-04-13 |
+| `jwc_certificate_correction` | `official_doc` | 教务处办事指南 | [学历勘误办理](https://jwc.niit.edu.cn/b2/c1/c2538a45761/page.htm) | 2022-02-21 |
+| `jwc_certificate_issue` | `official_doc` | 教务处办事指南 | [学历证明开具](https://jwc.niit.edu.cn/b2/c2/c2538a45762/page.htm) | 2022-02-21 |
+| `jwc_diploma_reissue` | `official_doc` | 教务处办事指南 | [毕业证明书办理流程](https://jwc.niit.edu.cn/b2/c0/c2538a45760/page.htm) | 2022-02-21 |
+| `jwc_exam_defer` | `official_doc` | 教务处办事指南 | [缓考流程（流程图附件）](https://jwc.niit.edu.cn/_upload/article/files/fe/b2/bbc2247d486abb11cb7832584634/ea90932d-b196-4a3c-9f41-86b01e4f7e3a.pdf) | 2026-09-15 |
+| `jwc_student_id_reissue` | `official_doc` | 教务处办事指南 | [学生证补办流程](https://jwc.niit.edu.cn/b2/bf/c2538a45759/page.htm) | 2022-02-21 |
+| `jwc_suspend_resume` | `official_doc` | 教务处办事指南 | [休复学流程（流程图附件）](https://jwc.niit.edu.cn/_upload/article/files/9d/9a/e2dc9cbe469db86eda1cde23441c/3ec226ea-89af-451b-8cc6-c4956a3cbfdc.pdf) | 2026-09-15 |
+| `jwc_graduation_project` | `official_doc` | 教务处官网 | [顶岗实习与毕业设计](https://jwc.niit.edu.cn/2374/list.htm) | 2026-09-15 |
 | `xxh_cloud_disk` | `real_notice_v3` | 数智化处 | [关于启用校园云盘的通知](https://xxh.niit.edu.cn/13/62/c2265a70498/page.htm) | 2025-10-16 |
 | `xxh_net_auth` | `real_notice_v3` | 数智化处 | [关于优化校园网认证服务的通知](https://xxh.niit.edu.cn/18/d9/c2265a71897/page.htm) | 2025-12-11 |
 | `xxh_openclaw_ban` | `real_notice_v3` | 数智化处 | [关于严禁在校内使用OpenClaw软件的通知](https://xxh.niit.edu.cn/1c/af/c2265a72879/page.htm) | 2026-03-16 |
 | `xxh_smart_bot` | `real_notice_v3` | 数智化处 | [关于学校启用智能机器人服务的通知](https://xxh.niit.edu.cn/12/10/c2265a70160/page.htm) | 2025-09-19 |
 | `xxh_student_email` | `real_notice_v3` | 数智化处 | [关于在校学生开通校园邮箱的通知](https://xxh.niit.edu.cn/0f/09/c2265a69385/page.htm) | 2025-07-03 |
 | `xxh_wifi_drop` | `real_notice_v3` | 数智化处 | [校园无线网终端频繁掉线问题的参考处理方案](https://xxh.niit.edu.cn/02/54/c2265a66132/page.htm) | 2025-03-20 |
+| `tuition_fee` | `official_doc` | 计划财务处官网 | [收费公示牌（2024）](https://cwc.niit.edu.cn/f5/64/c2340a62820/page.htm) | 2024-10-11 |
 
 ### `manual_verified` 型明细（人工核实，v1.8.0 新增）
 
@@ -130,6 +146,30 @@
 `off_campus_info` 是 `guidance` 型（无原文可摘）：`source=项目服务边界说明`、`title=服务范围说明`、`date=None`。
 
 > 这是刻意的产品边界，不是校方政策，没有官方原文可引。此前「学校附近哪家火锅好吃」会被 canteen_info 以 0.6563 的余弦分抢走，答成校内食堂营业时间（答非所问）—— 新增本意图后由它承接。若日后接入周边生活服务数据，应改为 official_doc / real_notice_v3。
+
+`zs_notice_addr_change` 是 `guidance` 型（无原文可摘）：`source=招生信息网`、`title=录取通知书收件信息修改申请`、`date=2026-09-15`。
+
+> 栏目正文未能自动化抓取（页面无正文、无附件链接），答案只给办理入口与咨询电话，未编造具体步骤。取得当期说明原文后应改为通知摘录型。
+
+`card_freeze` 是 `guidance` 型（无原文可摘）：`source=计划财务处官方微信公众号`、`title=【答疑】校园卡账户冻结怎么办？`、`date=2026-09-15`。
+
+> 微信图文正文无法被程序抓取（服务端返回「请在微信客户端打开」墙），因此只给入口不摘步骤。需人工打开原文回填后可升级为 official_doc。
+
+`card_realname` 是 `guidance` 型（无原文可摘）：`source=计划财务处官方微信公众号`、`title=校园虚拟卡申请及实名认证操作流程`、`date=2026-09-15`。
+
+> 与既有 card_recharge（充值）、lost_card（挂失补办）区分：本条专指实名认证与虚拟卡。微信正文无法程序抓取，仅给入口。
+
+`dorm_electricity` 是 `guidance` 型（无原文可摘）：`source=计划财务处官方微信公众号`、`title=学生公寓电控充值使用说明`、`date=2026-09-15`。
+
+> 与既有 card_recharge 边界：本条是宿舍电费（空调/照明电控），不是校园卡余额充值。微信正文无法程序抓取，仅给入口。
+
+`academic_calendar` 是 `guidance` 型（无原文可摘）：`source=学校官网`、`title=学校校历`、`date=2026-09-15`。
+
+> 校历内容为图片，正文无法提取，故只给查询入口不给日期 —— 学年敏感信息固化在语料里必然过期。
+
+`zs_score_line` 是 `guidance` 型（无原文可摘）：`source=招生信息网`、`title=职教高考分数 / 专转本招生分数`、`date=2026-09-15`。
+
+> 栏目内每条记录都是某一年的分数线（2020-2026 共 11 条 / 15 条），任何单年数据都会过期，故只给栏目入口。
 
 ### 无 `_meta` 但带顶层 `source` 文本声明的意图（不计入溯源）
 
