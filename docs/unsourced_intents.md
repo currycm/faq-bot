@@ -1,9 +1,9 @@
 # 无溯源意图清单（unsourced intents）
 
-- **语料快照**：`data/qa_corpus.json` 1.11.0，72 意图 / 549 问法
+- **语料快照**：`data/qa_corpus.json` 1.13.0，73 意图 / 554 问法
 - **口径**：`_meta` 缺失 —— 既没有官方通知原文可摘，也没有显式标注为「引导型」
 - **生成方式**：`python scripts/report_unsourced.py`（规则可重算，非手填）
-- **结论**：**1 / 72 个意图无溯源**
+- **结论**：**1 / 73 个意图无溯源**
 
 > 风险分级由两条信号自动判定：答案里是否出现**具体校方事实**（日期/时刻/金额/数量/电话/网址/地点），
 > 以及是否带**兜底措辞**（「以…为准」这类自我限定）。
@@ -13,7 +13,7 @@
 | 类别 | 意图数 | 溯源状态 | 说明 |
 |---|---|---|---|
 | `real_notice_v3` | 24 | ✅ 有官方通知原文 | 全部是部门前缀 `jwc_` / `xsc_` / `xxh_`，含 `url` + `title` + `date` |
-| `official_doc` | 18 | ✅ 有官方文档/页面 | `dorm_repair`, `psych_counseling`, `jwc_student_id_reissue`, `jwc_certificate_issue`, `jwc_certificate_correction`, `jwc_diploma_reissue`, `zs_contact`, `library_contact`, `library_service`, `library_book_lost`, `library_purchase`, `jwc_suspend_resume`, `jwc_exam_defer`, `jwc_graduation_project`, `major_intro`, `zs_admission_query`, `tuition_fee`, `dorm_summer_stay`，含 `url` + `title`，来源为官方 PDF/网页（v1.6.0 新增）|
+| `official_doc` | 19 | ✅ 有官方文档/页面 | `dorm_repair`, `psych_counseling`, `jwc_student_id_reissue`, `jwc_certificate_issue`, `jwc_certificate_correction`, `jwc_diploma_reissue`, `zs_contact`, `library_contact`, `library_service`, `library_book_lost`, `library_purchase`, `jwc_suspend_resume`, `jwc_exam_defer`, `jwc_graduation_project`, `major_intro`, `zs_admission_query`, `tuition_fee`, `dorm_summer_stay`, `zs_registry_copy`，含 `url` + `title`，来源为官方 PDF/网页（v1.6.0 新增）|
 | `guidance` | 8 | ⚠️ 有标注、无原文 | `jwc_major_change`, `off_campus_info`, `zs_notice_addr_change`, `card_freeze`, `card_realname`, `dorm_electricity`, `academic_calendar`, `zs_score_line`，正文已声明以官方为准 |
 | `manual_verified` | 21 | 🟡 **人工核实，无原文** | 无 url 可引，但有核实对象与核实日期（见第三节）；可信度高于「作者推测」、低于「有原文可核」 |
 | **无 `_meta`** | **1** | ❌ **无溯源** | `campus_map_guide` |
@@ -83,6 +83,7 @@
 | `major_intro` | `official_doc` | 招生信息网 | [学院及本科专业设置](https://zs.niit.edu.cn/xyjzysz/list.htm) | 2026-09-15 |
 | `zs_admission_query` | `official_doc` | 招生信息网 | [2026年高考招生（录取结果、通知书寄发情况查询）](https://zs.niit.edu.cn/0e/5b/c2896a69211/page.htm) | 2026-07-22 |
 | `zs_contact` | `official_doc` | 招生信息网 | [咨询方式](https://zs.niit.edu.cn/zxfs/list.htm) | 2026-09-15 |
+| `zs_registry_copy` | `official_doc` | 招生信息网 | [录取名册复印申请](https://zs.niit.edu.cn/lqmcsq/list.htm) | 2026-09-15 |
 | `jwc_bachelor_degree` | `real_notice_v3` | 教务处 | [南京工业职业技术大学关于2026年8月授予本科毕业生学士学位的公示](https://jwc.niit.edu.cn/29/2e/c2370a76078/page.htm) | 2026-08-28 |
 | `jwc_cet_signup` | `real_notice_v3` | 教务处 | [关于做好2026年上半年全国大学英语四六级考试报名工作的通知](https://jwc.niit.edu.cn/1c/1d/c2370a72733/page.htm) | 2026-03-10 |
 | `jwc_classroom_closed` | `real_notice_v3` | 教务处 | [关于仙林校区及天堂校区教学楼限时封闭的通知](https://jwc.niit.edu.cn/23/7e/c2370a74622/page.htm) | 2026-06-05 |
@@ -124,7 +125,7 @@
 | `express_pickup` | 人工核实（职能部门 / 现场问询，2026-09-14） | 2026-09-14 |
 | `grade_query` | 人工核实（职能部门 / 现场问询，2026-09-14） | 2026-09-14 |
 | `leave_apply` | 人工核实（职能部门 / 现场问询，2026-09-14） | 2026-09-14 |
-| `library_borrow` | 人工核实（职能部门 / 现场问询，2026-09-14） | 2026-09-14 |
+| `library_borrow` | 人工核实（图书馆流通部电话确认，2026-09-15） | 2026-09-15 |
 | `library_hours` | 人工核实（职能部门 / 现场问询，2026-09-14） | 2026-09-14 |
 | `library_seat` | 人工核实（职能部门 / 现场问询，2026-09-14） | 2026-09-14 |
 | `lost_card` | 人工核实（职能部门 / 现场问询，2026-09-14） | 2026-09-14 |
@@ -149,7 +150,7 @@
 
 `zs_notice_addr_change` 是 `guidance` 型（无原文可摘）：`source=招生信息网`、`title=录取通知书收件信息修改申请`、`date=2026-09-15`。
 
-> 栏目正文未能自动化抓取（页面无正文、无附件链接），答案只给办理入口与咨询电话，未编造具体步骤。取得当期说明原文后应改为通知摘录型。
+> 该栏目页经核实**当前无任何正文**（原始 HTML：0 个 form、0 个 iframe、0 个正文容器），并非渲染或抓取问题，因此不再列为「待人工回填」。答案改为可操作兜底：未寄出联系招生办、已寄出凭 EMS 单号走邮政渠道。
 
 `card_freeze` 是 `guidance` 型（无原文可摘）：`source=计划财务处官方微信公众号`、`title=【答疑】校园卡账户冻结怎么办？`、`date=2026-09-15`。
 
