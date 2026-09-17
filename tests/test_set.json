@@ -1,7 +1,7 @@
 {
   "meta": {
-    "version": "1.0.9",
-    "updated_at": "2026-09-15",
+    "version": "1.2.0",
+    "updated_at": "2026-09-17",
     "guideline": "测试问句必须与 data/qa_corpus.json 中的问法不同 —— 换同义词、改语序、加口语助词、故意写错别字。拿训练集当测试集，模型只是背下了答案，测出来 100% 准确率毫无意义。expected_tag 为 null 表示『这个问题机器人不该回答』，用于检查是否乱答。 cases 的可选字段 note：用于标注已知问题样本（如歧义样本），所有评测脚本只用 query 与 expected_tag，不会读取该字段。",
     "how_to_extend": "每次线上收集到未命中问题（见 logs/unmatched.jsonl），人工归纳后补充到语料，并在这里补 2-3 条改写问句。"
   },
@@ -109,10 +109,6 @@
     {
       "query": "周六回来晚了会不会被记",
       "expected_tag": "dorm_curfew"
-    },
-    {
-      "query": "校园无线网初始密码是啥",
-      "expected_tag": "campus_wifi"
     },
     {
       "query": "校园无线网初始密码是啥",
@@ -405,7 +401,7 @@
     },
     {
       "query": "团籍怎么转入新学校",
-      "expected_tag": "enrollment_report"
+      "expected_tag": "party_org_transfer"
     },
     {
       "query": "饭堂刷微信行不行",
@@ -834,6 +830,118 @@
     {
       "query": "一几年以前入学的名册要去哪找",
       "expected_tag": "zs_registry_copy"
+    },
+    {
+      "query": "新生报到要走哪几步",
+      "expected_tag": "enrollment_checkin"
+    },
+    {
+      "query": "预报到系统什么时候能登",
+      "expected_tag": "enrollment_checkin"
+    },
+    {
+      "query": "报到那天先去哪个地方",
+      "expected_tag": "enrollment_checkin"
+    },
+    {
+      "query": "我的档案要交给谁",
+      "expected_tag": "archive_transfer"
+    },
+    {
+      "query": "档案能不能自己拿着",
+      "expected_tag": "archive_transfer"
+    },
+    {
+      "query": "入党材料要自己带过来吗",
+      "expected_tag": "party_org_transfer"
+    },
+    {
+      "query": "智慧团建是新生自己发起吗",
+      "expected_tag": "party_org_transfer"
+    },
+    {
+      "query": "户口迁不迁有影响吗",
+      "expected_tag": "household_migration"
+    },
+    {
+      "query": "迁户口什么时候办",
+      "expected_tag": "household_migration"
+    },
+    {
+      "query": "当兵的新生怎么保留学籍",
+      "expected_tag": "freshman_military_service"
+    },
+    {
+      "query": "入伍新生的材料要寄给谁",
+      "expected_tag": "freshman_military_service"
+    },
+    {
+      "query": "地铁二号线能到学校吗",
+      "expected_tag": "campus_transport_route"
+    },
+    {
+      "query": "天堂校区坐几路公交",
+      "expected_tag": "campus_transport_route"
+    },
+    {
+      "query": "学校门口有哪些公交",
+      "expected_tag": "campus_transport_route"
+    },
+    {
+      "query": "网上缴费是几点到几点",
+      "expected_tag": "tuition_payment"
+    },
+    {
+      "query": "缴费用户名是学号还是身份证",
+      "expected_tag": "tuition_payment"
+    },
+    {
+      "query": "学费网上交完怎么确认成功",
+      "expected_tag": "tuition_payment"
+    },
+    {
+      "query": "生源地贷款要家长一起去吗",
+      "expected_tag": "student_loan"
+    },
+    {
+      "query": "助学贷款毕业前要还吗",
+      "expected_tag": "student_loan"
+    },
+    {
+      "query": "学院教学办的电话怎么查",
+      "expected_tag": "department_phone"
+    },
+    {
+      "query": "马克思主义学院综合办公室电话是多少",
+      "expected_tag": "department_phone"
+    },
+    {
+      "query": "找学工处办事情打哪个号",
+      "expected_tag": "department_phone"
+    },
+    {
+      "query": "松山湖在校园哪个位置",
+      "expected_tag": "campus_building_location"
+    },
+    {
+      "query": "双创大楼在什么地方",
+      "expected_tag": "campus_building_location"
+    },
+    {
+      "query": "学校的宿舍楼都分布在哪",
+      "expected_tag": "campus_building_location"
+    },
+    {
+      "query": "电子信息工程学院的电话是多少",
+      "expected_tag": "department_phone"
+    },
+    {
+      "query": "心理健康教育中心的电话是多少",
+      "expected_tag": "department_phone"
+    },
+    {
+      "query": "宿舍维修打哪个电话",
+      "expected_tag": "dorm_repair"
     }
   ]
 }
