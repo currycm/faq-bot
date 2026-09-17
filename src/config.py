@@ -86,12 +86,32 @@ if HF_MIRROR:
     os.environ.setdefault("HF_ENDPOINT", HF_MIRROR)
 
 # auto 模式下探测模型缓存目录
+# !! 2026-09-15 修复：原实现只看 `snapshots` 目录**是否存在**，而下载失败/中断
+#    也会留下一个（空的或不含权重的）目录 —— 于是从此判定"已在缓存里，走离线"，
+#    把后续所有下载都永久堵死，报错还是误导性的
+#    `does not appear to have a file named pytorch_model.bin or model.safetensors`
+#    （实测在托管平台构建环境里就卡死在这一条上）。
+#    现在要求**确实存在权重文件**才算缓存命中。
 if HF_OFFLINE_MODE == "auto":
     cache_root = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface"))
     hub_cache = cache_root / "hub"
-    _model_in_cache = (hub_cache / "models--BAAI--bge-small-zh-v1.5" / "snapshots").exists()
+    _snaps = hub_cache / "models--BAAI--bge-small-zh-v1.5" / "snapshots"
+    _model_in_cache = False
+    if _snaps.is_dir():
+        try:
+            _model_in_cache = any(
+                (rev / "model.safetensors").exists() or (rev / "pytorch_model.bin").exists()
+                for rev in _snaps.iterdir()
+                if rev.is_dir()
+            )
+        except OSError:
+            _model_in_cache = False
     if _model_in_cache:
         os.environ["HF_HUB_OFFLINE"] = "1"
+        print("[config] BGE 模型已在本地缓存（含权重）→ 走离线模式")
+    else:
+        # 明确取消可能被外部环境预设的离线标志，否则一次失败的下载会永久挡住重试
+        os.environ.pop("HF_HUB_OFFLINE", None)
 elif HF_OFFLINE_MODE == "force":
     os.environ["HF_HUB_OFFLINE"] = "1"
 
@@ -157,6 +177,18 @@ BGE_MODEL_NAME = "BAAI/bge-small-zh-v1.5"
 BGE_DEVICE = "cpu"            # 有 GPU 可改为 "cuda"
 BGE_BATCH_SIZE = 16
 BGE_NORMALIZE = True          # 归一化后余弦相似度等价于点积，速度更快
+
+# ---- 随包本地模型（离线部署用，2026-09-15 加）----
+# 把模型文件放进  models/<模型名>/  即可，它会**优先于**联网下载。
+# 为什么需要：沙箱/受限网络的托管环境里，`pip install` 能通但 hf-mirror 不通，
+# 于是"能装好依赖、却加载不了模型"——表现为页面正常渲染、一问就"服务暂时不可用"，
+# 因为 FaqBot 是懒加载的（见 app.py 的 @st.cache_resource），失败被 UI 兜成通用提示。
+# 随包带上模型后运行时完全不碰网络。
+BGE_LOCAL_DIR = BASE_DIR / "models" / BGE_MODEL_NAME.split("/")[-1]
+BGE_MODEL_PATH = str(BGE_LOCAL_DIR) if BGE_LOCAL_DIR.is_dir() else BGE_MODEL_NAME
+if BGE_LOCAL_DIR.is_dir():
+    # 本地路径加载本就不需要网络；显式置位可让 HuggingFace 彻底不发起请求（更快更稳）
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
 # 分词后是否过滤停用词
 REMOVE_STOPWORDS = True

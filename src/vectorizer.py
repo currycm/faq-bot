@@ -157,6 +157,10 @@ class BgeVectorizerImpl(BaseVectorizer):
 
     def __init__(self, model_name: str | None = None, device: str | None = None):
         self.model_name = model_name or config.BGE_MODEL_NAME
+        # 实际加载用的路径：若项目里随包带了本地模型目录（models/<模型名>/），
+        # config.BGE_MODEL_PATH 会指向它 —— 受限网络下运行时不能联网下载，
+        # 靠这个把模型加载变成纯本地操作。未随包时它等于 BGE_MODEL_NAME（照常联网）。
+        self.model_path = model_name or config.BGE_MODEL_PATH
         self.device = device or config.BGE_DEVICE
         self.model = None
         self._fitted = False
@@ -189,13 +193,14 @@ class BgeVectorizerImpl(BaseVectorizer):
             print(f"[vectorizer:bge] 设置 torch 线程数失败（忽略）：{exc}")
 
         # trust_remote_code=False：BGE-small-zh-v1.5 是官方模型，无需自定义代码
-        self.model = SentenceTransformer(self.model_name, device=self.device)
+        self.model = SentenceTransformer(self.model_path, device=self.device)
         self.model.eval() if hasattr(self.model, "eval") else None
 
         self._fitted = True
         # 预热一次，避免首次请求把模型编译耗时算进延迟
         self.transform(corpus[0:1] if corpus else ["预热"])
-        print(f"[vectorizer:bge] 模型加载完成：{self.model_name} "
+        _from = f"（本地随包）{self.model_path}" if self.model_path != self.model_name else self.model_name
+        print(f"[vectorizer:bge] 模型加载完成：{_from} "
               f"dim={self.dim} device={self.device}")
 
     def transform(self, texts: list[str]) -> np.ndarray:
