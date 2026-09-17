@@ -1,0 +1,32 @@
+# ============================================================================
+# 部署专用依赖（沙箱 / 云托管）—— 给「单进程 Streamlit」用
+#
+# 与仓库根目录 `requirements.txt` 的差别，以及为什么：
+#   1) **torch 锁 CPU 版**：根 requirements 故意不写 torch，靠 sentence-transformers
+#      自动拉 —— 默认拉的是 **CUDA 版（2GB+）**，构建会非常慢甚至超时。
+#      这里显式装 CPU 版，几百 MB 且这机器没有 GPU，推理行为完全一致。
+#   2) **不带 gunicorn / fastapi / uvicorn / redis**：那些是独立后端（api.py）
+#      与多 worker 部署用的；单进程 Streamlit 模式下 app.py 直接进程内调 FaqBot，
+#      用不上。少装 = 构建快 + 镜像小。
+#   3) 其余版本与根 requirements 保持一致（都用 >= 而不是 ==，理由见根文件顶部）。
+#
+# 用法：
+#   pip install -r requirements-deploy.txt
+#   python -m streamlit run app.py --server.port $PORT --server.address 0.0.0.0 \
+#          --server.headless true --server.enableCORS false --server.enableXsrfProtection false
+#
+# ⚠️ 发布前务必确认项目目录里**没有 `.env`**（含真实 API key）——
+#    发布是上传整个目录，`.env` 会被一起传上去。见 docs/deploy_hf_spaces.md 的「发布前检查」。
+# ============================================================================
+
+# torch 走官方 CPU 索引（PyPI 上的是 CUDA 版）
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+
+sentence-transformers>=2.2.0
+streamlit>=1.42.0
+jieba>=0.42.1
+scikit-learn>=1.3.0
+numpy>=1.24.0
+requests>=2.31.0
+python-dotenv>=1.0.0

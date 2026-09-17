@@ -1,4 +1,73 @@
-# 部署到 Hugging Face Spaces（可照抄清单）
+# 部署在线 Demo
+
+> 目标：让面试官点开一个公网链接就能直接试用。
+
+---
+
+## ✅ 首选：沙箱直接发布（已实操，2026-09-15）
+
+**现状**：已发布在 **<https://campus-faq-bot.app.workbuddy.host/>**（HTTP 200，
+`/_stcore/health` 返回 `ok`）。选它而不是 HF Spaces 的理由：**国内可直接访问**，
+而且不需要任何账号或凭据。
+
+发布参数（复现/重发时照抄）：
+
+| 项 | 值 |
+|---|---|
+| 目录 | 项目根目录 |
+| 语言 | `python` |
+| 安装命令 | `pip install -r requirements-deploy.txt` |
+| 启动命令 | `python -m streamlit run app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true --server.enableCORS false --server.enableXsrfProtection false --browser.gatherUsageStats false` |
+| 端口 | `8501` |
+
+### ⚠️ 发布前检查（每一条都真踩过，2026-09-15）
+
+1. **把 `.env` 移出项目目录**。发布是**上传整个目录**，而 `.env` 里有真实的
+   `DEEPSEEK_API_KEY` / `HEFENG_API_KEY` —— 只改名成 `.env.deploy-bak` **不管用**
+   （照样在目录里），必须移到项目目录**之外**。发布完再移回来，并 grep 一遍确认没残留。
+2. **端口写字面值**。`--server.port $PORT` 不展开时会报
+   `service did not become reachable within 60s`；写死 `8501` 就对了。
+3. **`.env.example` 里不留 `redis://...` 字面连接串**。平台据此判定
+   "本项目需要外部 Redis 服务"并**直接拒绝发布**（本项目 Redis 本就是可选的）。
+4. **随包模型不能放在 `.gitignore` 里**：部署**按 `.gitignore` 排除上传内容**。
+   本次把 92MB 的 `models/` 加进 `.gitignore` 想"不进 git"，结果连上传也被排除了。
+   正解是写进 **`.git/info/exclude`**（只对本地生效、不进仓库）——git 保持干净，
+   部署却能拿到它。
+5. **发布依赖用 `requirements-deploy.txt`**：torch 锁 CPU 版（默认会拉 CUDA 版 2GB+），
+   不带 gunicorn/fastapi/redis（单进程 Streamlit 用不上）。
+
+---
+
+## 🔧 故障排查：发布成功但一问就「服务暂时不可用」
+
+**这是最坑的一种失败**：平台返回 `verified: true`、页面也渲染正常（标题、标签页都在），
+但一提问就显示「服务暂时不可用」。
+
+**原因**：`app.py` 里 `FaqBot` 是**懒加载**的（`@st.cache_resource`），
+所以依赖缺失 / 模型加载失败**都不会**让进程崩 —— 只在第一次请求时抛异常，
+被 UI 兜成一句通用提示。**"服务可达" ≠ "能用"**。
+
+**排查顺序**（每一步都对应一个已修的坑）：
+
+| 现象 | 根因 | 修法 |
+|---|---|---|
+| 页面正常，一问就报错 | 机器人懒加载，失败被 UI 吞掉 | **把初始化挪到构建期**：`scripts/prefetch_model.py` 放进 `installCmd`，失败会在**构建日志**里直接暴露 |
+| 构建报 `does not appear to have a file named model.safetensors` | 1️⃣ 构建环境**连不上 hf-mirror**，模型下不下来<br>2️⃣ 且 `config.py` 的离线判定**只看快照目录存在与否** —— 一次失败留下的空目录会让它永久判定"已缓存、别联网"，把后续重试全堵死 | 已修 `config.py`：改为**必须存在权重文件**才算命中，并显式 `pop` 掉外部预设的 `HF_HUB_OFFLINE`；同时把模型**随包带上** |
+| 随包了模型却仍走联网 | `scripts/prefetch_model.py` 误用 `BGE_MODEL_NAME`（HF 编号）而非 `BGE_MODEL_PATH`（本地路径）——**本地有 HF 缓存所以看不出来**，一到干净环境就暴露 | 已修：用 `BGE_MODEL_PATH`；`src/vectorizer.py` 同样改为优先本地目录 |
+| 诊断信息看不到 | 构建日志只保留尾部若干行，单独 `print` 的诊断被截掉 | 把诊断（本地目录是否存在、目录内文件、权重字节数）**拼进失败那一行本身** |
+
+**发布后一定要真的问一句**：`scripts/` 之外还有个一次性校验脚本（无头浏览器打开线上地址、
+提问、读回答）。仅看 HTTP 200 或健康检查**不足以**说明能用 —— 本次就是"可达但坏着"。
+注意 playwright 与本机 chromium 版本不匹配，要 `executable_path` 直指
+`ms-playwright/chromium-1223/chrome-win64/chrome.exe`。
+
+---
+
+## 备选：Hugging Face Spaces
+
+需要你的 HF 账号 + write token（沙箱无凭据，push 只能本机做）。
+**注意国内访问常常打不开**，所以放在备选。
+
 
 > 目标：让面试官点开一个公网链接就能直接试用你的校园问答机器人。
 > 预计耗时：第一次约 15–30 分钟（含模型首次下载）。之后改代码推一下就更新。
@@ -16,7 +85,7 @@
 
 | 路线 | 改动 | 复杂度 | 说明 |
 |------|------|--------|------|
-| **A. 让 app.py 自包含（已默认启用 ✅）** | 已改好 | 低 | `FAQ_API_BASE` 未设置时进程内直接调 `FaqBot`；设了仍走 HTTP。只需**一个** Space |
+| **A. 让 app.py 自包含（已默认启用 ✅，2026-09-15 实测通过）** | 已改好 | 低 | `FAQ_API_BASE` 未设置时进程内直接调 `FaqBot`；设了仍走 HTTP。只需**一个** Space |
 | **B. 前后端分开部署（不改代码）** | 0 改动 | 中 | 后端部署到 Railway/Render 拿 URL，前端 Space 设 `FAQ_API_BASE` 指过去。需**两个**服务 |
 
 下面清单按 **路线 A** 写（已默认生效，无需额外改代码）。
@@ -66,7 +135,7 @@
 
 ```bash
 # 进入项目目录
-cd "C:/Users/24830/Desktop/问答机器/faq-bot"
+cd "C:/Users/24830/Desktop/智答校园/faq-bot"
 
 # 添加 HF Space 为远程（用你第 2 步拿到的地址）
 git remote add space https://huggingface.co/spaces/<你的HF用户名>/faq-bot
