@@ -8,6 +8,7 @@
     export DEEPSEEK_API_KEY=sk-xxx          # 推荐
 或在 config.DEEPSEEK_API_KEY 里硬编码（不推荐提交到仓库）。
 """
+
 from __future__ import annotations
 
 import json
@@ -34,6 +35,7 @@ class LLMAnswer:
         ok:       是否真的拿到了 LLM 回复（替代靠子串嗅探判断）
         cost_cny: 本次调用的真实成本（按 usage × 单价折算，元）
     """
+
     text: str
     ok: bool
     cost_cny: float = 0.0
@@ -85,39 +87,50 @@ def call_llm(question: str, system: Optional[str] = None) -> Optional[LLMResult]
         with urllib.request.urlopen(req, timeout=config.DEEPSEEK_TIMEOUT) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
-        logger.write_jsonl(config.LOG_PATH, {
-            "event": "llm_api_error",
-            "model": config.DEEPSEEK_MODEL,
-            "error": str(exc),
-        })
+        logger.write_jsonl(
+            config.LOG_PATH,
+            {
+                "event": "llm_api_error",
+                "model": config.DEEPSEEK_MODEL,
+                "error": str(exc),
+            },
+        )
         return None
 
     latency_ms = round((__import__("time").perf_counter() - t0) * 1000, 1)
     # 2026-09 修复：content 为 null（被内容过滤器拦截 / reasoning 模型）时
     # 旧代码抛 AttributeError，既不在捕获列表内，invalid 事件也永远不记录。
     try:
-        content = ((data.get("choices") or [{}])[0]
-                   .get("message", {}).get("content") or "").strip()
+        content = ((data.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
     except (KeyError, IndexError, TypeError, AttributeError):
-        logger.write_jsonl(config.LOG_PATH, {
-            "event": "llm_response_invalid",
-            "raw": str(data)[:300],
-        })
+        logger.write_jsonl(
+            config.LOG_PATH,
+            {
+                "event": "llm_response_invalid",
+                "raw": str(data)[:300],
+            },
+        )
         return None
 
     if not content:
-        logger.write_jsonl(config.LOG_PATH, {
-            "event": "llm_response_invalid",
-            "raw": str(data)[:300],
-        })
+        logger.write_jsonl(
+            config.LOG_PATH,
+            {
+                "event": "llm_response_invalid",
+                "raw": str(data)[:300],
+            },
+        )
         return None
 
-    logger.write_jsonl(config.LOG_PATH, {
-        "event": "llm_call_ok",
-        "model": config.DEEPSEEK_MODEL,
-        "latency_ms": latency_ms,
-        "usage": data.get("usage"),
-    })
+    logger.write_jsonl(
+        config.LOG_PATH,
+        {
+            "event": "llm_call_ok",
+            "model": config.DEEPSEEK_MODEL,
+            "latency_ms": latency_ms,
+            "usage": data.get("usage"),
+        },
+    )
 
     return LLMResult(answer=content, raw=data)
 
@@ -130,12 +143,14 @@ def _usage_cost_cny(usage: Optional[dict]) -> float:
     """
     if not usage:
         from ..security.budget import get_budget
+
         return get_budget().avg_cost_per_call
     try:
         prompt_tokens = int(usage.get("prompt_tokens") or 0)
         completion_tokens = int(usage.get("completion_tokens") or 0)
     except (TypeError, ValueError):
         from ..security.budget import get_budget
+
         return get_budget().avg_cost_per_call
     in_cost = prompt_tokens * config.DEEPSEEK_INPUT_PRICE_PER_MTOK / 1_000_000
     out_cost = completion_tokens * config.DEEPSEEK_OUTPUT_PRICE_PER_MTOK / 1_000_000
@@ -153,8 +168,7 @@ def answer_with_cost(question: str) -> LLMAnswer:
     try:
         result = call_llm(question)
     except Exception as exc:
-        logger.write_jsonl(config.LOG_PATH,
-                           {"event": "llm_exception", "error": str(exc)})
+        logger.write_jsonl(config.LOG_PATH, {"event": "llm_exception", "error": str(exc)})
         return LLMAnswer(text=config.FALLBACK_TEXT, ok=False)
 
     if result is None:

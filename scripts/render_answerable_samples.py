@@ -9,6 +9,7 @@ section 整体重排，diff 没法看）。
     python scripts/render_answerable_samples.py            # 写入
     python scripts/render_answerable_samples.py --check    # 只做保真自检，不写
 """
+
 from __future__ import annotations
 
 import json
@@ -39,8 +40,7 @@ def render() -> str:
         "- 口径：`expected_tag` 非空的测试问句（即应被机器人正确命中、不应转入兜底/拒答）",
         f"- 合计：**{total}** 条，覆盖 **{len(groups)}** 个意图",
         "",
-        "> 每条样本均为对语料问法的改写（换同义词/改语序/加口语助词/错别字），"
-        "用于检验模型泛化而非死记。",
+        "> 每条样本均为对语料问法的改写（换同义词/改语序/加口语助词/错别字），用于检验模型泛化而非死记。",
         "",
     ]
     for tag, qs in groups.items():
@@ -63,6 +63,7 @@ def main() -> int:
         print("保真自检：", "✅ 生成器能复现现有清单" if same else "❌ 不一致，先修生成器")
         if not same:
             import difflib
+
             a = old.replace("\r\n", "\n").splitlines()
             b = new.splitlines()
             for i, d in enumerate(list(difflib.unified_diff(a, b, "现有", "重新生成", lineterm=""))[:40]):

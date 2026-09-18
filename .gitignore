@@ -33,6 +33,11 @@ Thumbs.db
 .ruff_cache/
 .pytest_cache/
 .mypy_cache/
+# 2026-09 补：CI 加了 --cov 覆盖率门禁后，本地跑测试会生成这些产物。
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
 # !! Streamlit 只忽略运行时缓存：.streamlit/config.toml 是**项目配置**（已入库），
 #    写 .streamlit/ 整目录会把它一起漏掉。
 .streamlit/cache/

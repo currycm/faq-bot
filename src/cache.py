@@ -29,6 +29,7 @@
     换掉 ranker/retriever 再问同一个问题，需要先把 ANSWER_CACHE_ENABLED 关掉
     （tests/test_ranker.py 就是这么做的），或调用 reload() 清缓存。
 """
+
 from __future__ import annotations
 
 import threading

@@ -23,6 +23,7 @@
     - 进程内 in-memory。多 worker 时每个 worker 独立计数（与限流同）。
     - 估算成本按"平均 200 tokens/次"粗算，误差可接受。
 """
+
 from __future__ import annotations
 
 import sys
@@ -41,6 +42,7 @@ class _Window:
     次数×平均价线性增长，永远撞不到独立阈值）。现在每次记录带真实
     成本，次数与成本两个指标真正解耦。
     """
+
     events: Deque[tuple] = field(default_factory=deque)
 
     def _prune(self, window_sec: float) -> None:
@@ -114,8 +116,7 @@ class BudgetGuard:
                 calls = self._window.count_in(self.window_sec)
                 if calls >= self.max_calls:
                     return False, (
-                        f"调用次数熔断：{self.window_sec:.0f}s 内已调用 {calls} 次，"
-                        f"超过上限 {self.max_calls}"
+                        f"调用次数熔断：{self.window_sec:.0f}s 内已调用 {calls} 次，超过上限 {self.max_calls}"
                     )
                 total_cost = self._window.cost_in(self.window_sec)
                 if total_cost + cost >= self.max_cost_cny:
@@ -156,8 +157,7 @@ class BudgetGuard:
                 # 语义是"下一次 check 会不会被挡"：成本维度要算上
                 # 下一次调用的预估成本（check 用 total + cost 判定）。
                 # 2026-09 修复：此前只看次数，成本维度先爆时监控仍显示关闭。
-                "is_open": (calls >= self.max_calls
-                            or cost + self.avg_cost_per_call >= self.max_cost_cny),
+                "is_open": (calls >= self.max_calls or cost + self.avg_cost_per_call >= self.max_cost_cny),
             }
 
     def reset(self) -> None:
@@ -179,6 +179,7 @@ def get_budget():
         # 2026-09 修复：从 config 读取（此前写死导致 BUDGET_* 调了不生效）。
         # 默认：1 小时 500 次 / 10 元。
         from .. import config
+
         params = dict(
             window_sec=getattr(config, "BUDGET_WINDOW_SEC", 3600),
             max_calls=getattr(config, "BUDGET_MAX_CALLS", 500),
@@ -189,6 +190,7 @@ def get_budget():
         if getattr(config, "REDIS_URL", ""):
             try:
                 from .redis_backend import RedisBudgetGuard
+
                 _budget = RedisBudgetGuard(
                     config.REDIS_URL,
                     socket_timeout=getattr(config, "REDIS_TIMEOUT", 1.0),
@@ -196,8 +198,7 @@ def get_budget():
                 )
                 return _budget
             except Exception as exc:
-                print(f"[budget] ⚠️ Redis 预算器初始化失败，退回进程内实现：{exc}",
-                      file=sys.stderr)
+                print(f"[budget] ⚠️ Redis 预算器初始化失败，退回进程内实现：{exc}", file=sys.stderr)
         _budget = BudgetGuard(**params)
     return _budget
 

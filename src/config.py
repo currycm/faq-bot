@@ -13,6 +13,7 @@
 
 参考 .env.example 获取字段名。.env 文件已加入 .gitignore。
 """
+
 import os
 import sys
 from pathlib import Path
@@ -53,9 +54,9 @@ except ImportError:
 #    教训：同一个函数**只保留一处定义**，别用「先赋值再被 def 覆盖」这种隐式手法。
 def _load_secret(name: str) -> str:
     """读 KEY。优先级：
-        1. 直接环境变量  NAME
-        2. _FILE 环境变量 NAME_FILE 指向的文件内容（Docker / K8s secret 挂载）
-        3. 空字符串（功能降级到固定话术）
+    1. 直接环境变量  NAME
+    2. _FILE 环境变量 NAME_FILE 指向的文件内容（Docker / K8s secret 挂载）
+    3. 空字符串（功能降级到固定话术）
     """
     direct = os.environ.get(name, "").strip()
     if direct:
@@ -70,6 +71,7 @@ def _load_secret(name: str) -> str:
             print(f"[config] ⚠️  {name}_FILE={file_path} 读取失败：{exc}", file=sys.stderr)
             return ""
     return ""
+
 
 # ---------------------------------------------------------------- 网络配置（必须在 import huggingface_hub 之前生效）
 # HuggingFace 国内镜像。沙箱 / 国内网络访问 hf.co 会失败，默认走镜像。
@@ -123,12 +125,12 @@ DATA_DIR = BASE_DIR / "data"
 LOG_DIR = BASE_DIR / "logs"
 TESTS_DIR = BASE_DIR / "tests"
 
-CORPUS_PATH = DATA_DIR / "qa_corpus.json"        # 问答语料（核心资产）
-STOPWORDS_PATH = DATA_DIR / "stopwords.txt"      # 停用词表
-TEST_SET_PATH = TESTS_DIR / "test_set.json"      # 测试集（与语料物理隔离）
+CORPUS_PATH = DATA_DIR / "qa_corpus.json"  # 问答语料（核心资产）
+STOPWORDS_PATH = DATA_DIR / "stopwords.txt"  # 停用词表
+TEST_SET_PATH = TESTS_DIR / "test_set.json"  # 测试集（与语料物理隔离）
 
-LOG_PATH = LOG_DIR / "qa.log"                    # 全量问答日志（JSONL）
-UNMATCHED_PATH = LOG_DIR / "unmatched.jsonl"     # 未命中问题单独采集，用于迭代语料
+LOG_PATH = LOG_DIR / "qa.log"  # 全量问答日志（JSONL）
+UNMATCHED_PATH = LOG_DIR / "unmatched.jsonl"  # 未命中问题单独采集，用于迭代语料
 
 # 确保日志目录存在，否则写日志时报错
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -165,7 +167,7 @@ VECTORIZER_TYPE = "bge"
 # BERT 方案使用的预训练模型（仅 VECTORIZER_TYPE=bert 时生效）
 BERT_MODEL_NAME = "bert-base-chinese"
 BERT_MAX_LENGTH = 64
-BERT_DEVICE = "cpu"          # 有 GPU 可改为 "cuda"
+BERT_DEVICE = "cpu"  # 有 GPU 可改为 "cuda"
 
 # BGE 方案使用的预训练模型（仅 VECTORIZER_TYPE=bge 时生效）
 # 推荐：90MB，CPU 单句 30-50ms，效果是 bert-base 的两倍。
@@ -174,9 +176,9 @@ BERT_DEVICE = "cpu"          # 有 GPU 可改为 "cuda"
 #   - BAAI/bge-small-en-v1.5   （英文场景）
 #   - moka-ai/m3e-small         （50MB，最快，效果稍逊）
 BGE_MODEL_NAME = "BAAI/bge-small-zh-v1.5"
-BGE_DEVICE = "cpu"            # 有 GPU 可改为 "cuda"
+BGE_DEVICE = "cpu"  # 有 GPU 可改为 "cuda"
 BGE_BATCH_SIZE = 16
-BGE_NORMALIZE = True          # 归一化后余弦相似度等价于点积，速度更快
+BGE_NORMALIZE = True  # 归一化后余弦相似度等价于点积，速度更快
 
 # ---- 随包本地模型（离线部署用，2026-09-15 加）----
 # 把模型文件放进  models/<模型名>/  即可，它会**优先于**联网下载。
@@ -197,18 +199,61 @@ REMOVE_STOPWORDS = True
 # 例如"校园卡"被切成"校园"+"卡"，就与索引里的词元对不上了
 CUSTOM_WORDS = [
     # 卡务
-    "校园卡", "一卡通", "学生卡", "饭卡", "圈存机", "挂失", "补办",
+    "校园卡",
+    "一卡通",
+    "学生卡",
+    "饭卡",
+    "圈存机",
+    "挂失",
+    "补办",
     # 教学
-    "教务系统", "选课", "退课", "补考", "重修", "绩点", "学分",
-    "成绩单", "在读证明", "复查", "复核", "一门课",
+    "教务系统",
+    "选课",
+    "退课",
+    "补考",
+    "重修",
+    "绩点",
+    "学分",
+    "成绩单",
+    "在读证明",
+    "复查",
+    "复核",
+    "一门课",
     # 图书馆
-    "图书馆", "自习室", "闭馆", "开馆", "续借", "逾期", "选座", "占座",
+    "图书馆",
+    "自习室",
+    "闭馆",
+    "开馆",
+    "续借",
+    "逾期",
+    "选座",
+    "占座",
     # 生活
-    "宿舍", "寝室", "门禁", "熄灯", "晚归", "报修", "灯泡", "热水器",
-    "校园网", "宽带", "流量", "认证",
+    "宿舍",
+    "寝室",
+    "门禁",
+    "熄灯",
+    "晚归",
+    "报修",
+    "灯泡",
+    "热水器",
+    "校园网",
+    "宽带",
+    "流量",
+    "认证",
     # 学工与医疗
-    "奖学金", "助学金", "勤工助学", "贫困生", "认定", "辅导员",
-    "校医院", "学校医院", "医务室", "医保", "转诊单", "报销",
+    "奖学金",
+    "助学金",
+    "勤工助学",
+    "贫困生",
+    "认定",
+    "辅导员",
+    "校医院",
+    "学校医院",
+    "医务室",
+    "医保",
+    "转诊单",
+    "报销",
 ]
 
 
@@ -218,8 +263,8 @@ CUSTOM_WORDS = [
 # !! 切换 VECTORIZER_TYPE 后必须重新跑 `python evaluate.py --scan` 标定阈值。
 SIMILARITY_THRESHOLD = 0.60
 
-TOP_K = 3                    # 召回候选数量
-ENABLE_RERANK = False        # 是否启用 L4 精排（默认关，见下方说明）
+TOP_K = 3  # 召回候选数量
+ENABLE_RERANK = False  # 是否启用 L4 精排（默认关，见下方说明）
 
 # ---- 精排（ENABLE_RERANK=True 时生效）----
 # 2026-09 修复：默认模型从英文的 cross-encoder/mmarco-mMiniLMv2 换成
@@ -248,11 +293,9 @@ RERANK_THRESHOLD = 0.20
 # ---------------------------------------------------------------- 抗并发（2026-09）
 # ---- 答案缓存 ----
 # 只缓存**语料命中**结果，兜底类（LLM/天气）不缓存 —— 理由见 src/cache.py。
-ANSWER_CACHE_ENABLED = (
-    os.environ.get("FAQ_ANSWER_CACHE", "1").lower() in ("1", "true", "yes")
-)
-ANSWER_CACHE_SIZE = 512      # 最多缓存条数（超出按 LRU 淘汰）
-ANSWER_CACHE_TTL = 300       # 条目存活秒数
+ANSWER_CACHE_ENABLED = os.environ.get("FAQ_ANSWER_CACHE", "1").lower() in ("1", "true", "yes")
+ANSWER_CACHE_SIZE = 512  # 最多缓存条数（超出按 LRU 淘汰）
+ANSWER_CACHE_TTL = 300  # 条目存活秒数
 
 # ---- 慢路径隔离 ----
 # 兜底链路（LLM 约 1.4s、天气最长 6s、LLM 超时 8s）与检索（约 10ms）共用
@@ -286,10 +329,7 @@ TORCH_NUM_THREADS = int(os.environ.get("FAQ_TORCH_THREADS", "1"))
 # 兜底话术的唯一原则：**只说"我答不上"，不说"我为什么答不上"。**
 # "API key 没配""网络异常""预算用完了""让管理员补语料"都是给运维看的信息，
 # 学生看到只会一头雾水，还会怀疑整个服务是坏的。
-FALLBACK_TEXT = (
-    "抱歉，这个问题我暂时答不上。\n"
-    "可以换个问法试试，比如问得再具体一点。"
-)
+FALLBACK_TEXT = "抱歉，这个问题我暂时答不上。\n可以换个问法试试，比如问得再具体一点。"
 # FALLBACK_HUMAN_TEXT（含 010-12345678 假电话）与 SHOW_SUGGESTIONS 也已删除：
 # 两者都只被 _legacy_fallback 使用，随该函数一起下线。
 
@@ -302,23 +342,20 @@ FALLBACK_TEXT = (
 # 加载方式：进程环境变量 > .env 文件 > 空（降级到固定话术）
 DEEPSEEK_ENABLED = True
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-DEEPSEEK_API_KEY = _load_secret("DEEPSEEK_API_KEY")   # !! 不要在这里填明文 !!
-DEEPSEEK_MODEL = "deepseek-chat"             # 备选: deepseek-reasoner (R1，更慢但更强)
-DEEPSEEK_TIMEOUT = 8                        # 秒，超时直接降级
-DEEPSEEK_TEMPERATURE = 0.3                  # 低温度 → 回答更确定、更少幻觉
-DEEPSEEK_MAX_TOKENS = 256                   # 单次回答上限
+DEEPSEEK_API_KEY = _load_secret("DEEPSEEK_API_KEY")  # !! 不要在这里填明文 !!
+DEEPSEEK_MODEL = "deepseek-chat"  # 备选: deepseek-reasoner (R1，更慢但更强)
+DEEPSEEK_TIMEOUT = 8  # 秒，超时直接降级
+DEEPSEEK_TEMPERATURE = 0.3  # 低温度 → 回答更确定、更少幻觉
+DEEPSEEK_MAX_TOKENS = 256  # 单次回答上限
 # 2026-09 新增：成本熔断按真实 usage 累计（元 / 百万 token）。
 # 默认取 deepseek-chat 官方价附近，换模型/调价时改这里。
-DEEPSEEK_INPUT_PRICE_PER_MTOK = 1.0        # 输入 ¥/1M tokens
-DEEPSEEK_OUTPUT_PRICE_PER_MTOK = 2.0       # 输出 ¥/1M tokens
+DEEPSEEK_INPUT_PRICE_PER_MTOK = 1.0  # 输入 ¥/1M tokens
+DEEPSEEK_OUTPUT_PRICE_PER_MTOK = 2.0  # 输出 ¥/1M tokens
 
 # LLM 预算耗尽时给用户的话术（区别于"知识库没收录"的 FALLBACK_TEXT）。
 # 2026-09 修复：预算熔断只拦 LLM 通道，闲聊/天气/校园事务不受影响。
 # 同样不提"预算"——那是运营指标；顺带把话头引回校园问题，别让用户空手而归。
-BUDGET_EXHAUSTED_TEXT = (
-    "这个问题我暂时答不上，稍后再试试吧。\n"
-    "学校相关的问题随时可以问我，比如报到、宿舍、食堂这些。"
-)
+BUDGET_EXHAUSTED_TEXT = "这个问题我暂时答不上，稍后再试试吧。\n学校相关的问题随时可以问我，比如报到、宿舍、食堂这些。"
 
 # DeepSeek 的系统提示 —— 这是防幻觉的第一道防线。
 # !! 改这段话时请三思：写得越宽，LLM 越容易编校务。
@@ -359,7 +396,7 @@ DEEPSEEK_SYSTEM_PROMPT = """你是南京工业职业技术大学的智能助手"
 #
 # 【v5 安全】API Key 不再硬编码在本文件，统一通过环境变量 HEFENG_API_KEY 注入。
 HEFENG_ENABLED = True
-HEFENG_API_KEY = _load_secret("HEFENG_API_KEY")   # !! 不要在这里填明文 !!
+HEFENG_API_KEY = _load_secret("HEFENG_API_KEY")  # !! 不要在这里填明文 !!
 
 # !! 重要：和风的 API Host 是**每个账号个性化分配**的，不一定是下面这两个默认值。
 #    用错 host 会返回 403 Invalid Host。
@@ -367,7 +404,7 @@ HEFENG_API_KEY = _load_secret("HEFENG_API_KEY")   # !! 不要在这里填明文 
 #    然后通过环境变量 HEFENG_BASE_URL 覆盖（写在 .env 里即可，不用改代码）。
 HEFENG_BASE_URL = _load_secret("HEFENG_BASE_URL") or "https://devapi.qweather.com"
 HEFENG_GEO_URL = _load_secret("HEFENG_GEO_URL") or "https://geoapi.qweather.com"
-HEFENG_CITY = "南京"                       # 默认查询的城市
+HEFENG_CITY = "南京"  # 默认查询的城市
 HEFENG_TIMEOUT = 6
 
 
@@ -376,48 +413,144 @@ HEFENG_TIMEOUT = 6
 # 命中"校园"后即使用户问的是通识，也走固定兜底 —— 防止 LLM 在校园上下文里发言。
 REALTIME_KEYWORDS = [
     # 天气
-    "天气", "气温", "下雨", "下雪", "刮风", "几度", "穿什么", "热不热", "冷不冷",
-    "今天冷", "今天热", "会不会下雨", "天气预报", "晴天", "阴天", "多云",
+    "天气",
+    "气温",
+    "下雨",
+    "下雪",
+    "刮风",
+    "几度",
+    "穿什么",
+    "热不热",
+    "冷不冷",
+    "今天冷",
+    "今天热",
+    "会不会下雨",
+    "天气预报",
+    "晴天",
+    "阴天",
+    "多云",
     # 校历日期
-    "校历", "开学", "放假", "期末", "什么时候开", "什么时候放", "周几开学",
+    "校历",
+    "开学",
+    "放假",
+    "期末",
+    "什么时候开",
+    "什么时候放",
+    "周几开学",
     # 课表 / 成绩
-    "我的课表", "今天有什么课", "成绩查询", "查成绩", "绩点多少",
+    "我的课表",
+    "今天有什么课",
+    "成绩查询",
+    "查成绩",
+    "绩点多少",
 ]
 
 # 校园事务关键词：只要问题里出现这些词，即便没命中语料，也走固定兜底。
 # 这是"校园事务绝不进 LLM"的安全栏。
 CAMPUS_KEYWORDS = [
     # 教学
-    "选课", "退课", "补考", "重修", "绩点", "学分", "成绩", "挂科", "缓考",
-    "转专业", "休学", "复学", "退学", "毕业", "答辩",
+    "选课",
+    "退课",
+    "补考",
+    "重修",
+    "绩点",
+    "学分",
+    "成绩",
+    "挂科",
+    "缓考",
+    "转专业",
+    "休学",
+    "复学",
+    "退学",
+    "毕业",
+    "答辩",
     # 卡务
-    "校园卡", "一卡通", "饭卡", "挂失", "补卡", "充值", "圈存",
+    "校园卡",
+    "一卡通",
+    "饭卡",
+    "挂失",
+    "补卡",
+    "充值",
+    "圈存",
     # 学工
-    "奖学金", "助学金", "勤工助学", "贫困生", "助学贷款", "辅导员",
+    "奖学金",
+    "助学金",
+    "勤工助学",
+    "贫困生",
+    "助学贷款",
+    "辅导员",
     # 宿舍/后勤
-    "宿舍", "寝室", "门禁", "熄灯", "晚归", "报修", "热水", "空调",
+    "宿舍",
+    "寝室",
+    "门禁",
+    "熄灯",
+    "晚归",
+    "报修",
+    "热水",
+    "空调",
     # 图书馆
-    "借书", "还书", "续借", "图书馆", "自习室", "占座", "闭馆",
+    "借书",
+    "还书",
+    "续借",
+    "图书馆",
+    "自习室",
+    "占座",
+    "闭馆",
     # 网络
-    "校园网", "宽带", "网费", "wifi", "WiFi",
+    "校园网",
+    "宽带",
+    "网费",
+    "wifi",
+    "WiFi",
     # 生活服务
-    "食堂", "餐厅", "超市", "浴室", "开水", "洗衣机",
+    "食堂",
+    "餐厅",
+    "超市",
+    "浴室",
+    "开水",
+    "洗衣机",
     # 通用校园词
     # 2026-09 修复：删除单字"系"（误伤"关**系**/体**系**/**系**统"）
     # 和"专业"（误伤"专业英语"）；"转专业"已在上方教学类覆盖。
-    "学校", "学院", "教务处", "学工处", "后勤", "校医院",
-    "医保", "报销", "校历",
+    "学校",
+    "学院",
+    "教务处",
+    "学工处",
+    "后勤",
+    "校医院",
+    "医保",
+    "报销",
+    "校历",
     # 学校标志 / 文化
-    "校庆", "校训", "校歌", "校徽", "校风",
+    "校庆",
+    "校训",
+    "校歌",
+    "校徽",
+    "校风",
 ]
 
 CHAT_KEYWORDS = [
-    "你好", "您好", "hi", "hello", "嗨", "hey",
-    "谢谢", "感谢", "辛苦了",
-    "你是谁", "你叫什么", "你能做什么",
-    "再见", "拜拜", "bye",
-    "哈哈", "呵呵", "嘿嘿",
-    "开心", "难过", "生气",
+    "你好",
+    "您好",
+    "hi",
+    "hello",
+    "嗨",
+    "hey",
+    "谢谢",
+    "感谢",
+    "辛苦了",
+    "你是谁",
+    "你叫什么",
+    "你能做什么",
+    "再见",
+    "拜拜",
+    "bye",
+    "哈哈",
+    "呵呵",
+    "嘿嘿",
+    "开心",
+    "难过",
+    "生气",
 ]
 
 # 路由器日志：把每次分流的判断结果记录到 LOG，便于回溯。
@@ -426,7 +559,7 @@ ROUTER_LOG_ENABLED = True
 
 # ---------------------------------------------------------------- 日志配置
 ENABLE_LOGGING = True
-LOG_TO_CONSOLE = False       # 调试时打开，可看到每次请求的相似度与耗时
+LOG_TO_CONSOLE = False  # 调试时打开，可看到每次请求的相似度与耗时
 
 # 反馈日志：用户点"有用/没用"后写到 feedback.jsonl，用于运营迭代
 FEEDBACK_ENABLED = True
@@ -508,9 +641,8 @@ SECURITY_LOG_ENABLED = True
 # 当前架构浏览器不直连 API（Streamlit 服务端转发），暂无实际影响，
 # 但一旦改成 HTML/JS 前端直连就会全部跨域被拦。
 CORS_ORIGINS = [
-    o.strip() for o in
-    os.environ.get("FAQ_CORS_ORIGINS",
-                   "http://localhost:8501,http://127.0.0.1:8501").split(",")
+    o.strip()
+    for o in os.environ.get("FAQ_CORS_ORIGINS", "http://localhost:8501,http://127.0.0.1:8501").split(",")
     if o.strip()
 ]
 
@@ -518,6 +650,4 @@ CORS_ORIGINS = [
 # 2026-09 修复：XFF 第一段可被客户端任意伪造，直接信任 = IP 限流失效。
 # 仅当 API 只暴露在可信反代（nginx）后面时才打开；直连部署必须保持 False。
 # 配套 nginx 配置已改为 `X-Forwarded-For $remote_addr`（覆盖而非追加）。
-TRUST_PROXY_HEADERS = (
-    os.environ.get("FAQ_TRUST_PROXY_HEADERS", "").lower() in ("1", "true", "yes")
-)
+TRUST_PROXY_HEADERS = os.environ.get("FAQ_TRUST_PROXY_HEADERS", "").lower() in ("1", "true", "yes")

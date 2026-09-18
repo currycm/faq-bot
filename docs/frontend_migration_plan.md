@@ -224,7 +224,7 @@ faq-bot/
 
 ```python
 class FeedbackRequest(BaseModel):
-    vote: str                      # "up" | "down"
+    vote: str  # "up" | "down"
     query: str = Field(max_length=200)
     matched: bool = False
     tag: str | None = None

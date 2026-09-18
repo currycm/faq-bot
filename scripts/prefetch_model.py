@@ -16,6 +16,7 @@
 用法（部署时的 installCmd）：
     pip install -r requirements-deploy.txt && python scripts/prefetch_model.py
 """
+
 from __future__ import annotations
 
 import sys
@@ -42,8 +43,10 @@ def main() -> int:
     print(f"[prefetch] 实际使用={config.BGE_MODEL_PATH}")
     # HF_ENDPOINT / HF_HUB_OFFLINE 都是 config 在 import 阶段塞进 os.environ 的，
     # 所以这里读环境变量而不是读 config 属性（config 里那个常量叫 HF_MIRROR）。
-    print(f"[prefetch] HF_ENDPOINT={os.environ.get('HF_ENDPOINT', '(unset)')} "
-          f"HF_HUB_OFFLINE={os.environ.get('HF_HUB_OFFLINE', '(unset)')}")
+    print(
+        f"[prefetch] HF_ENDPOINT={os.environ.get('HF_ENDPOINT', '(unset)')} "
+        f"HF_HUB_OFFLINE={os.environ.get('HF_HUB_OFFLINE', '(unset)')}"
+    )
 
     try:
         from sentence_transformers import SentenceTransformer
@@ -63,11 +66,12 @@ def main() -> int:
         # 另外把目录内容也列出来 —— 用于判断"目录传上来了但大文件被丢弃"这类情况。
         try:
             import os as _os
+
             _files = sorted(_os.listdir(config.BGE_LOCAL_DIR)) if config.BGE_LOCAL_DIR.is_dir() else []
             _w = config.BGE_LOCAL_DIR / "model.safetensors"
             _wsize = _w.stat().st_size if _w.exists() else -1
             _info = f"目录内={_files} ｜ 权重字节={_wsize}"
-        except Exception as _e:                     # 诊断失败不能掩盖原始错误
+        except Exception as _e:  # 诊断失败不能掩盖原始错误
             _info = f"(列目录失败：{_e})"
         print(
             f"[prefetch] ✗ 模型加载失败 ｜ 本地目录存在={config.BGE_LOCAL_DIR.is_dir()} "

@@ -6,6 +6,7 @@
     返回的是默认城市 config.HEFENG_CITY（南京）的天气。接口 200、延迟正常、
     答案格式也正常，只有城市是错的——这种 bug 靠看日志发现不了。
 """
+
 from __future__ import annotations
 
 import pytest
@@ -82,10 +83,22 @@ def test_forecast_uses_daily_entry(monkeypatch):
     def fake_fetch(location_id):
         fetched.append(location_id)
         return [
-            {"fxDate": "2026-09-14", "textDay": "晴", "tempMin": "20",
-             "tempMax": "28", "windDirDay": "东南风", "windScaleDay": "3"},
-            {"fxDate": "2026-09-15", "textDay": "小雨", "tempMin": "16",
-             "tempMax": "22", "windDirDay": "东北风", "windScaleDay": "4"},
+            {
+                "fxDate": "2026-09-14",
+                "textDay": "晴",
+                "tempMin": "20",
+                "tempMax": "28",
+                "windDirDay": "东南风",
+                "windScaleDay": "3",
+            },
+            {
+                "fxDate": "2026-09-15",
+                "textDay": "小雨",
+                "tempMin": "16",
+                "tempMax": "22",
+                "windDirDay": "东北风",
+                "windScaleDay": "4",
+            },
         ]
 
     monkeypatch.setattr(weather, "_fetch_forecast", fake_fetch)
@@ -102,9 +115,17 @@ def test_forecast_uses_daily_entry(monkeypatch):
 def test_forecast_day_after_tomorrow_offset(monkeypatch):
     """后天 → daily[2]。"""
     _mock_auth(monkeypatch)
-    daily = [{"fxDate": f"2026-09-{14 + i}", "textDay": "晴", "tempMin": "20",
-              "tempMax": "28", "windDirDay": "东风", "windScaleDay": "3"}
-             for i in range(3)]
+    daily = [
+        {
+            "fxDate": f"2026-09-{14 + i}",
+            "textDay": "晴",
+            "tempMin": "20",
+            "tempMax": "28",
+            "windDirDay": "东风",
+            "windScaleDay": "3",
+        }
+        for i in range(3)
+    ]
     monkeypatch.setattr(weather, "_fetch_forecast", lambda loc: daily)
     r = weather.get_forecast("南京", "后天")
     assert r is not None and r.date == "2026-09-16"
@@ -113,8 +134,7 @@ def test_forecast_day_after_tomorrow_offset(monkeypatch):
 def test_forecast_insufficient_days(monkeypatch):
     """接口只返回 1 天时问「后天」→ None（上层降级），不能 IndexError。"""
     _mock_auth(monkeypatch)
-    monkeypatch.setattr(weather, "_fetch_forecast",
-                        lambda loc: [{"fxDate": "2026-09-14"}])
+    monkeypatch.setattr(weather, "_fetch_forecast", lambda loc: [{"fxDate": "2026-09-14"}])
     assert weather.get_forecast("南京", "后天") is None
 
 

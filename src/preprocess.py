@@ -14,6 +14,7 @@
     BERT 方案自带 WordPiece 分词器，提前用 jieba 切开反而会破坏输入，
     所以这里把每一步都做成可插拔的开关，由上层决定启用哪些。
 """
+
 from __future__ import annotations
 
 import logging
@@ -42,9 +43,9 @@ def to_halfwidth(text: str) -> str:
     result = []
     for ch in text:
         code = ord(ch)
-        if code == 0x3000:                 # 全角空格
+        if code == 0x3000:  # 全角空格
             result.append(" ")
-        elif 0xFF01 <= code <= 0xFF5E:     # 全角字符区间
+        elif 0xFF01 <= code <= 0xFF5E:  # 全角字符区间
             result.append(chr(code - 0xFEE0))
         else:
             result.append(ch)
@@ -70,7 +71,7 @@ def load_stopwords(path: str | Path | None = None) -> frozenset[str]:
     with open(path, encoding="utf-8") as f:
         for line in f:
             w = line.strip()
-            if w and not w.startswith("#"):   # 支持 # 注释行
+            if w and not w.startswith("#"):  # 支持 # 注释行
                 words.add(w)
     return frozenset(words)
 

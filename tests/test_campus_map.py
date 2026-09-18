@@ -6,6 +6,7 @@
     - 双校区切换下拉正常渲染
     - 渲染过程不抛异常
 """
+
 from __future__ import annotations
 
 import sys

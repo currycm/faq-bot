@@ -25,6 +25,7 @@
     - 内存常驻桶表 key 数 = 唯一 IP 数 + 唯一 user_id 数。
       启动时按需懒分配，请求结束不删除（避免热点用户反复创建桶）。
 """
+
 from __future__ import annotations
 
 import sys
@@ -37,6 +38,7 @@ from typing import Dict, Optional
 @dataclass
 class _Bucket:
     """单个令牌桶。"""
+
     tokens: float
     last_refill: float  # 上次补充时间（time.time()）
 
@@ -72,9 +74,9 @@ class RateLimiter:
             return JSONResponse(429, ...)
     """
 
-    def __init__(self, capacity: int = 30, refill_rate: float = 0.5,
-                 name: str = "default",
-                 max_buckets: int = _MAX_BUCKETS):
+    def __init__(
+        self, capacity: int = 30, refill_rate: float = 0.5, name: str = "default", max_buckets: int = _MAX_BUCKETS
+    ):
         """构造限流器。
 
         :param capacity:   桶容量（突发上限）
@@ -94,8 +96,7 @@ class RateLimiter:
         if len(self._buckets) <= self.max_buckets:
             return
         keep = int(self.max_buckets * _EVICT_KEEP_RATIO)
-        oldest = sorted(self._buckets.items(),
-                        key=lambda kv: kv[1].last_refill)
+        oldest = sorted(self._buckets.items(), key=lambda kv: kv[1].last_refill)
         for key, _ in oldest[:-keep]:
             self._buckets.pop(key, None)
 
@@ -149,16 +150,20 @@ def _build_limiter(name: str, capacity: int, refill_rate: float):
     初始化失败退回进程内实现。返回对象都有 allow/reset/stats 接口。
     """
     from .. import config
+
     if getattr(config, "REDIS_URL", ""):
         try:
             from .redis_backend import RedisRateLimiter
+
             return RedisRateLimiter(
-                config.REDIS_URL, capacity=capacity, refill_rate=refill_rate,
-                name=name, socket_timeout=getattr(config, "REDIS_TIMEOUT", 1.0),
+                config.REDIS_URL,
+                capacity=capacity,
+                refill_rate=refill_rate,
+                name=name,
+                socket_timeout=getattr(config, "REDIS_TIMEOUT", 1.0),
             )
         except Exception as exc:
-            print(f"[rate_limit] ⚠️ Redis 限流器初始化失败，退回进程内实现：{exc}",
-                  file=sys.stderr)
+            print(f"[rate_limit] ⚠️ Redis 限流器初始化失败，退回进程内实现：{exc}", file=sys.stderr)
     return RateLimiter(capacity=capacity, refill_rate=refill_rate, name=name)
 
 
@@ -166,6 +171,7 @@ def get_ip_limiter():
     global _ip_limiter
     if _ip_limiter is None:
         from .. import config
+
         _ip_limiter = _build_limiter(
             "ip",
             getattr(config, "RATE_LIMIT_IP_CAPACITY", 30),
@@ -178,6 +184,7 @@ def get_user_limiter():
     global _user_limiter
     if _user_limiter is None:
         from .. import config
+
         _user_limiter = _build_limiter(
             "user",
             getattr(config, "RATE_LIMIT_USER_CAPACITY", 60),

@@ -5,6 +5,7 @@ FakeRedis 只实现被用到的命令。令牌桶 Lua 在 fake 里用同逻辑�
 实现代替 —— 本文件验证的是包装层（键名 / 参数 / 降级行为 / 预算窗口）；
 Lua 脚本本身的语义应在真实 Redis 上联调确认（见 redis_backend.py 模块注释）。
 """
+
 from __future__ import annotations
 
 import sys
@@ -69,12 +70,13 @@ class FakeRedis:
     def register_script(self, script):
         def run(keys=None, args=None):
             return self.eval(script, len(keys or []), *(keys or []), *(args or []))
+
         return run
 
     def eval(self, script, numkeys, *rest):
         if self.fail:
             raise ConnectionError("redis down")
-        assert "HMGET" in script and "PEXPIRE" in script   # 确认是令牌桶脚本
+        assert "HMGET" in script and "PEXPIRE" in script  # 确认是令牌桶脚本
         key = rest[0]
         capacity, refill, cost = (float(a) for a in rest[1:4])
         tokens, ts = self.hashes.get(key, (capacity, self.now))
@@ -113,28 +115,25 @@ class FakeRedis:
 
 # ============================================================ 令牌桶
 def test_token_bucket_capacity_and_deny():
-    rl = RedisRateLimiter("redis://x", capacity=2, refill_rate=0.001,
-                          name="ip", client=FakeRedis())
+    rl = RedisRateLimiter("redis://x", capacity=2, refill_rate=0.001, name="ip", client=FakeRedis())
     assert rl.allow("1.2.3.4")
     assert rl.allow("1.2.3.4")
     assert not rl.allow("1.2.3.4")
-    assert rl.allow("5.6.7.8")           # 不同 key 独立
+    assert rl.allow("5.6.7.8")  # 不同 key 独立
 
 
 def test_token_bucket_refill():
     fake = FakeRedis()
-    rl = RedisRateLimiter("redis://x", capacity=1, refill_rate=10.0,
-                          name="ip", client=fake)
+    rl = RedisRateLimiter("redis://x", capacity=1, refill_rate=10.0, name="ip", client=fake)
     assert rl.allow("k")
     assert not rl.allow("k")
-    fake.now += 0.2                      # 补 2 个令牌（上限 1）
+    fake.now += 0.2  # 补 2 个令牌（上限 1）
     assert rl.allow("k")
 
 
 def test_token_bucket_falls_back_when_redis_down():
     """Redis 挂了 → 退回进程内桶继续限流，而不是直接放行。"""
-    rl = RedisRateLimiter("redis://x", capacity=2, refill_rate=0.001,
-                          name="ip", client=FakeRedis(fail=True))
+    rl = RedisRateLimiter("redis://x", capacity=2, refill_rate=0.001, name="ip", client=FakeRedis(fail=True))
     assert rl.allow("k")
     assert rl.allow("k")
     assert not rl.allow("k")
@@ -142,8 +141,7 @@ def test_token_bucket_falls_back_when_redis_down():
 
 # ============================================================ 预算熔断
 def test_budget_trips_on_calls():
-    bg = RedisBudgetGuard("redis://x", window_sec=60, max_calls=2,
-                          max_cost_cny=100.0, client=FakeRedis())
+    bg = RedisBudgetGuard("redis://x", window_sec=60, max_calls=2, max_cost_cny=100.0, client=FakeRedis())
     bg.record()
     bg.record()
     ok, reason = bg.check()
@@ -151,19 +149,18 @@ def test_budget_trips_on_calls():
 
 
 def test_budget_trips_on_cost():
-    bg = RedisBudgetGuard("redis://x", window_sec=60, max_calls=1000,
-                          max_cost_cny=0.05, avg_cost_per_call=0.02,
-                          client=FakeRedis())
+    bg = RedisBudgetGuard(
+        "redis://x", window_sec=60, max_calls=1000, max_cost_cny=0.05, avg_cost_per_call=0.02, client=FakeRedis()
+    )
     bg.record()
     bg.record()
     ok, reason = bg.check()
     assert not ok and "成本熔断" in reason
-    assert bg.stats()["is_open"] is True    # 成本触顶也要反映到 is_open
+    assert bg.stats()["is_open"] is True  # 成本触顶也要反映到 is_open
 
 
 def test_budget_window_slides():
-    bg = RedisBudgetGuard("redis://x", window_sec=0.2, max_calls=2,
-                          max_cost_cny=100.0, client=FakeRedis())
+    bg = RedisBudgetGuard("redis://x", window_sec=0.2, max_calls=2, max_cost_cny=100.0, client=FakeRedis())
     bg.record()
     bg.record()
     assert not bg.check()[0]
@@ -173,8 +170,7 @@ def test_budget_window_slides():
 
 def test_budget_falls_back_when_redis_down():
     """Redis 挂了 → 预算退回进程内熔断器（仍熔断，不是放空）。"""
-    bg = RedisBudgetGuard("redis://x", window_sec=60, max_calls=2,
-                          max_cost_cny=100.0, client=FakeRedis(fail=True))
+    bg = RedisBudgetGuard("redis://x", window_sec=60, max_calls=2, max_cost_cny=100.0, client=FakeRedis(fail=True))
     bg.record()
     assert bg.check()[0]
     bg.record()

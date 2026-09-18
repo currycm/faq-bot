@@ -276,13 +276,13 @@ QUESTION_TEMPLATES: dict[str, list[str]] = {
     ],
 }
 
+
 # 把每个通知映射到 intent tag 与原始语料合并
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="raw_notices → qa_corpus.json")
     p.add_argument("--input", type=Path, default=REPO_ROOT / "data/raw_notices/notices_seed.json")
     p.add_argument("--output", type=Path, default=REPO_ROOT / "data/qa_corpus.json")
-    p.add_argument("--merge", action="store_true",
-                   help="与现有 corpus 合并（按 tag 去重）")
+    p.add_argument("--merge", action="store_true", help="与现有 corpus 合并（按 tag 去重）")
     p.add_argument("--max-answer-len", type=int, default=350)
     return p.parse_args()
 
@@ -331,7 +331,7 @@ def truncate_answer(text: str, max_len: int) -> str:
     for sep in ["。", "；", ";", ". ", "!?", "？"]:
         last = cut.rfind(sep)
         if last > max_len * 0.6:
-            return cut[:last + 1] + "（详见原文）"
+            return cut[: last + 1] + "（详见原文）"
     return cut + "…（详见原文）"
 
 
@@ -375,9 +375,7 @@ def main() -> None:
         }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    args.output.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[write] {args.output} -> {len(out['intents'])} 个意图")
 
 

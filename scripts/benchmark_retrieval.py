@@ -8,6 +8,7 @@
 用法：
     python scripts/benchmark_retrieval.py
 """
+
 from __future__ import annotations
 
 import sys
@@ -37,14 +38,17 @@ def percentile(latencies_ms: list[float], p: float) -> float:
 
 def main() -> None:
     cases = ev.load_test_set()
-    print(f"测试集：{len(cases)} 条（可答 {sum(1 for c in cases if c.get('expected_tag'))} "
-          f"/ 应拒答 {sum(1 for c in cases if not c.get('expected_tag'))}）\n")
+    print(
+        f"测试集：{len(cases)} 条（可答 {sum(1 for c in cases if c.get('expected_tag'))} "
+        f"/ 应拒答 {sum(1 for c in cases if not c.get('expected_tag'))}）\n"
+    )
 
-    print(f"{'方案':<12}{'构建ms':>9}{'召回@1':>9}{'Top3':>9}"
-          f"{'未识别':>9}{'误答':>9}{'误触发':>9}{'命中P50':>10}{'命中P99':>10}")
+    print(
+        f"{'方案':<12}{'构建ms':>9}{'召回@1':>9}{'Top3':>9}"
+        f"{'未识别':>9}{'误答':>9}{'误触发':>9}{'命中P50':>10}{'命中P99':>10}"
+    )
     print("-" * 89)
-    print("（延迟只统计 matched=True 的样本：未命中会转兜底链路 LLM/天气，"
-          "属慢路径，不参与方案对比）")
+    print("（延迟只统计 matched=True 的样本：未命中会转兜底链路 LLM/天气，属慢路径，不参与方案对比）")
 
     for name, kw in CONFIGS:
         try:
@@ -68,8 +72,7 @@ def main() -> None:
             # !! 必须逐样本独立身份。不传身份时所有请求落进同一个共享 IP 桶，
             #    超额度后直接返回限流话术 —— **根本不走检索**。此时 P50 只有 ~1.9ms
             #    而命中率掉到 21%，测出来的是「限流响应速度」而不是检索耗时。
-            kw = {"user_id": f"bench-{i}",
-                  "client_ip": f"10.50.{i // 250}.{i % 250 + 1}"}
+            kw = {"user_id": f"bench-{i}", "client_ip": f"10.50.{i // 250}.{i % 250 + 1}"}
             t0 = time.perf_counter()
             r = bot.ask(c["query"], **kw)
             dt = (time.perf_counter() - t0) * 1000.0
@@ -81,10 +84,12 @@ def main() -> None:
         # 延迟循环本身也写满了缓存，评测前再清一次，保证是真实计算
         clear_answer_cache()
         metrics, _ = ev.evaluate(bot, cases)
-        print(f"{name:<12}{build_ms:>9.1f}{metrics['recall@1']:>8.1%}{metrics['top3']:>8.1%}"
-              f"{metrics['unmatched_rate']:>8.1%}{metrics['wrong_rate']:>8.1%}"
-              f"{metrics['false_trigger_rate']:>8.1%}"
-              f"{percentile(latencies, 50):>10.2f}{percentile(latencies, 99):>10.2f}")
+        print(
+            f"{name:<12}{build_ms:>9.1f}{metrics['recall@1']:>8.1%}{metrics['top3']:>8.1%}"
+            f"{metrics['unmatched_rate']:>8.1%}{metrics['wrong_rate']:>8.1%}"
+            f"{metrics['false_trigger_rate']:>8.1%}"
+            f"{percentile(latencies, 50):>10.2f}{percentile(latencies, 99):>10.2f}"
+        )
 
 
 if __name__ == "__main__":

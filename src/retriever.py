@@ -12,6 +12,7 @@ v1 用全量暴力计算（numpy / scipy 稀疏矩阵运算）。
     1 万~100 万  稀疏优化 / sklearn NearestNeighbors
     > 100 万     ANN 索引（Faiss / Milvus）
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,10 +27,11 @@ from . import preprocess
 @dataclass
 class Hit:
     """一条召回结果。"""
-    question: str     # 命中的预设问法（原始文本，用于展示）
-    answer: str       # 对应答案
-    tag: str          # 意图标签
-    score: float      # 余弦相似度
+
+    question: str  # 命中的预设问法（原始文本，用于展示）
+    answer: str  # 对应答案
+    tag: str  # 意图标签
+    score: float  # 余弦相似度
     # 精排分（sigmoid 后 0~1）。仅 ENABLE_RERANK=True 时由 ranker 填写；
     # 与 score 不同量纲，命中判定走 config.RERANK_THRESHOLD（见 ranker.py）
     rerank_score: float | None = None
@@ -79,8 +81,8 @@ class Retriever:
         idx = np.argsort(sims)[-top_k:][::-1]
 
         return [
-        Hit(
-            question=self.records[i]["question"],
+            Hit(
+                question=self.records[i]["question"],
                 answer=self.records[i]["answer"],
                 tag=self.records[i]["tag"],
                 score=float(sims[i]),

@@ -35,6 +35,7 @@
 这样测到的延迟就是线上真实要付的。模型推理本身有波动（同类项目实测 9.0~9.8ms
 上下晃），所以取中位数与 P95，而不是单次值。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -46,9 +47,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import evaluate as ev                      # noqa: E402
-from src import config                     # noqa: E402
-from src.agent import FaqBot               # noqa: E402
+import evaluate as ev  # noqa: E402
+from src import config  # noqa: E402
+from src.agent import FaqBot  # noqa: E402
 from src.ranker import CrossEncoderRanker  # noqa: E402
 
 sys.stdout.reconfigure(encoding="utf-8")
@@ -62,16 +63,15 @@ def pct(vals: list[float], q: float) -> float:
     return s[idx]
 
 
-def run_k(ranker: CrossEncoderRanker, bot: FaqBot, cases: list[dict], K: int,
-          collect_examples: bool = True) -> dict:
+def run_k(ranker: CrossEncoderRanker, bot: FaqBot, cases: list[dict], K: int, collect_examples: bool = True) -> dict:
     """跑一遍测试集：K 个候选 → 精排 → 记录命中性、排序变化、延迟。"""
     ret_times: list[float] = []
     rrk_times: list[float] = []
     cos_hit1 = rrk_hit1 = cos_hit3 = rrk_hit3 = vote_hit1 = 0
     n_ans = 0
     changed = 0
-    rescuable = 0          # 余弦 top1 错、但前 K 里有正解 → 精排"有机会救"
-    rescued = 0            # 上面那批里精排确实把正解推到 top1
+    rescuable = 0  # 余弦 top1 错、但前 K 里有正解 → 精排"有机会救"
+    rescued = 0  # 上面那批里精排确实把正解推到 top1
     examples: list[dict] = []
     rows: list[dict] = []  # 供阈值扫描用
 
@@ -112,20 +112,22 @@ def run_k(ranker: CrossEncoderRanker, bot: FaqBot, cases: list[dict], K: int,
             best[h.tag] = max(best.get(h.tag, 0.0), h.rerank_score)
         vote_tag = max(cnt, key=lambda t: (cnt[t], best[t])) if cnt else None
 
-        rows.append({
-            "query": q,
-            "expected": expected,
-            "cos_top1": before[0][0],
-            "cos_score": before[0][2],
-            "rrk_top1": top1.tag,
-            "rrk_score": top1.rerank_score,
-            "vote_tag": vote_tag,
-            "vote_score": best.get(vote_tag, 0.0) if vote_tag else 0.0,
-            "rrk_answers": top1.rerank_score >= config.RERANK_THRESHOLD,
-        })
+        rows.append(
+            {
+                "query": q,
+                "expected": expected,
+                "cos_top1": before[0][0],
+                "cos_score": before[0][2],
+                "rrk_top1": top1.tag,
+                "rrk_score": top1.rerank_score,
+                "vote_tag": vote_tag,
+                "vote_score": best.get(vote_tag, 0.0) if vote_tag else 0.0,
+                "rrk_answers": top1.rerank_score >= config.RERANK_THRESHOLD,
+            }
+        )
 
         if expected is None:
-            continue                      # 应拒答样本只用于阈值扫描
+            continue  # 应拒答样本只用于阈值扫描
         n_ans += 1
         tags_cos = [t for t, _, _ in before]
         tags_rrk = [t for t, _, _ in after]
@@ -146,20 +148,34 @@ def run_k(ranker: CrossEncoderRanker, bot: FaqBot, cases: list[dict], K: int,
             if tags_rrk[0] == expected:
                 rescued += 1
         if collect_examples and tags_rrk != tags_cos:
-            examples.append({
-                "query": q, "expected": expected,
-                "before": before, "after": after,
-                "fixed": tags_cos[0] != expected and tags_rrk[0] == expected,
-                "broke": tags_cos[0] == expected and tags_rrk[0] != expected,
-            })
+            examples.append(
+                {
+                    "query": q,
+                    "expected": expected,
+                    "before": before,
+                    "after": after,
+                    "fixed": tags_cos[0] != expected and tags_rrk[0] == expected,
+                    "broke": tags_cos[0] == expected and tags_rrk[0] != expected,
+                }
+            )
 
     return {
-        "K": K, "n": n_ans, "rows": rows, "examples": examples,
-        "cos_hit1": cos_hit1, "cos_hit3": cos_hit3,
-        "rrk_hit1": rrk_hit1, "rrk_hit3": rrk_hit3, "vote_hit1": vote_hit1,
-        "changed": changed, "rescuable": rescuable, "rescued": rescued,
-        "ret_med": statistics.median(ret_times), "ret_p95": pct(ret_times, 0.95),
-        "rrk_med": statistics.median(rrk_times), "rrk_p95": pct(rrk_times, 0.95),
+        "K": K,
+        "n": n_ans,
+        "rows": rows,
+        "examples": examples,
+        "cos_hit1": cos_hit1,
+        "cos_hit3": cos_hit3,
+        "rrk_hit1": rrk_hit1,
+        "rrk_hit3": rrk_hit3,
+        "vote_hit1": vote_hit1,
+        "changed": changed,
+        "rescuable": rescuable,
+        "rescued": rescued,
+        "ret_med": statistics.median(ret_times),
+        "ret_p95": pct(ret_times, 0.95),
+        "rrk_med": statistics.median(rrk_times),
+        "rrk_p95": pct(rrk_times, 0.95),
     }
 
 
@@ -167,15 +183,19 @@ def print_metrics(results: list[dict]) -> None:
     print("\n" + "=" * 96)
     print("  一、rerank 前后排序质量（测试集可答样本）")
     print("=" * 96)
-    print(f"{'K':>3} {'样本':>5} | {'余弦@1':>8} {'精排@1':>8} {'计数投票@1':>10} | "
-          f"{'余弦@3':>8} {'精排@3':>8} | {'排序变化':>8} {'可救集':>7} {'救回':>5}")
+    print(
+        f"{'K':>3} {'样本':>5} | {'余弦@1':>8} {'精排@1':>8} {'计数投票@1':>10} | "
+        f"{'余弦@3':>8} {'精排@3':>8} | {'排序变化':>8} {'可救集':>7} {'救回':>5}"
+    )
     print("-" * 96)
     for r in results:
         n = r["n"]
-        print(f"{r['K']:>3} {n:>5} | {r['cos_hit1']/n:>7.1%} {r['rrk_hit1']/n:>8.1%} "
-              f"{r['vote_hit1']/n:>10.1%} | "
-              f"{r['cos_hit3']/n:>7.1%} {r['rrk_hit3']/n:>8.1%} | "
-              f"{r['changed']:>8} {r['rescuable']:>7} {r['rescued']:>5}")
+        print(
+            f"{r['K']:>3} {n:>5} | {r['cos_hit1'] / n:>7.1%} {r['rrk_hit1'] / n:>8.1%} "
+            f"{r['vote_hit1'] / n:>10.1%} | "
+            f"{r['cos_hit3'] / n:>7.1%} {r['rrk_hit3'] / n:>8.1%} | "
+            f"{r['changed']:>8} {r['rescuable']:>7} {r['rescued']:>5}"
+        )
     print("-" * 96)
     print("「可救集」= 余弦 top1 答错、但前 K 个候选里存在正解 → 精排*原则上*有机会救回")
     print("「救回」  = 可救集里精排确实把正解推到了 top1")
@@ -186,14 +206,18 @@ def print_latency(results: list[dict]) -> None:
     print("\n" + "=" * 96)
     print("  二、延迟（毫秒 / 单次 ask 的排序层开销，CPU）")
     print("=" * 96)
-    print(f"{'K':>3} | {'检索 中位':>10} {'检索 P95':>10} | {'精排 中位':>10} {'精排 P95':>10} | "
-          f"{'合计 中位':>10} {'相对检索':>10}")
+    print(
+        f"{'K':>3} | {'检索 中位':>10} {'检索 P95':>10} | {'精排 中位':>10} {'精排 P95':>10} | "
+        f"{'合计 中位':>10} {'相对检索':>10}"
+    )
     print("-" * 96)
     for r in results:
         tot = r["ret_med"] + r["rrk_med"]
-        print(f"{r['K']:>3} | {r['ret_med']:>10.1f} {r['ret_p95']:>10.1f} | "
-              f"{r['rrk_med']:>10.1f} {r['rrk_p95']:>10.1f} | {tot:>10.1f} "
-              f"{tot/r['ret_med']:>9.1f}x")
+        print(
+            f"{r['K']:>3} | {r['ret_med']:>10.1f} {r['ret_p95']:>10.1f} | "
+            f"{r['rrk_med']:>10.1f} {r['rrk_p95']:>10.1f} | {tot:>10.1f} "
+            f"{tot / r['ret_med']:>9.1f}x"
+        )
 
 
 def scan_threshold(rows: list[dict], K: int) -> None:
@@ -219,8 +243,10 @@ def scan_threshold(rows: list[dict], K: int) -> None:
                 ft += 1
         acc = (ok + (len(rej) - ft)) / max(1, len(rows))
         mark = "  ←" if abs(t - config.RERANK_THRESHOLD) < 1e-9 else ""
-        print(f"{t:>6.2f} {ok/len(ans):>9.1%} {miss/len(ans):>8.1%} {wrong/len(ans):>7.1%} "
-              f"{ft}/{len(rej):>6} {acc:>10.1%}{mark}")
+        print(
+            f"{t:>6.2f} {ok / len(ans):>9.1%} {miss / len(ans):>8.1%} {wrong / len(ans):>7.1%} "
+            f"{ft}/{len(rej):>6} {acc:>10.1%}{mark}"
+        )
     print("-" * 96)
     print("「误触发」= 应拒答样本里精排分仍 ≥ 阈值（会被当成可答而硬答）")
 
@@ -234,8 +260,7 @@ def print_examples(examples: list[dict], limit: int) -> None:
     print("=" * 96)
     fixed = [e for e in examples if e["fixed"]]
     broke = [e for e in examples if e["broke"]]
-    print(f"其中：精排修好 {len(fixed)} 条，精排弄坏 {len(broke)} 条，"
-          f"其余只是同 tag 内问法顺序变化\n")
+    print(f"其中：精排修好 {len(fixed)} 条，精排弄坏 {len(broke)} 条，其余只是同 tag 内问法顺序变化\n")
     # 先放"修好"和"弄坏"的（最有信息量），再补其余；按 query 去重，避免重复打印
     picked: list[dict] = []
     seen_q: set[str] = set()
@@ -295,17 +320,22 @@ def main() -> None:
 
     print("[加载] 语料 + BGE + Cross-Encoder…")
     t0 = time.perf_counter()
-    bot = FaqBot()                       # ENABLE_RERANK 默认 False → 直通，用于取余弦候选
+    bot = FaqBot()  # ENABLE_RERANK 默认 False → 直通，用于取余弦候选
     s = bot.stats()
     ranker = CrossEncoderRanker()
     import torch
-    print(f"[就绪] 索引 {s['intents']} 意图 / {s['questions']} 问法 ｜ 向量化 {s['vectorizer']} ｜ "
-          f"精排模型 {ranker.model_name} ｜ torch 线程 {torch.get_num_threads()} ｜ "
-          f"耗时 {time.perf_counter()-t0:.1f}s")
+
+    print(
+        f"[就绪] 索引 {s['intents']} 意图 / {s['questions']} 问法 ｜ 向量化 {s['vectorizer']} ｜ "
+        f"精排模型 {ranker.model_name} ｜ torch 线程 {torch.get_num_threads()} ｜ "
+        f"耗时 {time.perf_counter() - t0:.1f}s"
+    )
 
     cases = ev.load_test_set()
-    print(f"[测试集] {len(cases)} 条（可答 {sum(1 for c in cases if c.get('expected_tag'))} / "
-          f"应拒答 {sum(1 for c in cases if not c.get('expected_tag'))}）")
+    print(
+        f"[测试集] {len(cases)} 条（可答 {sum(1 for c in cases if c.get('expected_tag'))} / "
+        f"应拒答 {sum(1 for c in cases if not c.get('expected_tag'))}）"
+    )
 
     ks = [int(x) for x in args.topk.split(",")]
     results = []
@@ -313,7 +343,7 @@ def main() -> None:
         t = time.perf_counter()
         r = run_k(ranker, bot, cases, K)
         results.append(r)
-        print(f"[K={K}] 完成，耗时 {time.perf_counter()-t:.1f}s")
+        print(f"[K={K}] 完成，耗时 {time.perf_counter() - t:.1f}s")
 
     print_metrics(results)
     print_latency(results)

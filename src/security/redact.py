@@ -17,6 +17,7 @@
     - 不做 NLP（纯正则覆盖 99% 场景，速度 <1ms）
     - 不调用网络（避免脱敏本身成为攻击面）
 """
+
 from __future__ import annotations
 
 import re
@@ -61,8 +62,10 @@ _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 # 银行卡：16-19 位数字，允许空格/连字符分隔（卡面打印格式），过 Luhn 校验
 _BANKCARD_RE = re.compile(r"(?<!\d)\d(?:[\s-]?\d){15,18}(?!\d)")
 # URL：含 hxxp 变体（常见规避写法）
-_URL_RE = re.compile(r"(?i)\b(?:https?|hxxps?|hxxp)://[^\s<>\"'，。；]+"
-                     r"|\bwww\.[^\s<>\"'，。；]+")
+_URL_RE = re.compile(
+    r"(?i)\b(?:https?|hxxps?|hxxp)://[^\s<>\"'，。；]+"
+    r"|\bwww\.[^\s<>\"'，。；]+"
+)
 # IPv4
 _IPV4_RE = re.compile(r"(?<!\d)(?:\d{1,3}\.){3}\d{1,3}(?!\d)")
 
@@ -99,8 +102,7 @@ def _looks_like_ipv4(s: str) -> bool:
 _PATTERNS: List[tuple] = [
     ("身份证", _IDCARD_RE, "[身份证]", None),
     # 银行卡匹配串可能含空格/连字符，Luhn 校验前先去掉分隔符
-    ("银行卡", _BANKCARD_RE, "[银行卡]",
-     lambda m: _luhn_ok(re.sub(r"[\s-]", "", m))),
+    ("银行卡", _BANKCARD_RE, "[银行卡]", lambda m: _luhn_ok(re.sub(r"[\s-]", "", m))),
     ("邮箱", _EMAIL_RE, "[邮箱]", None),
     ("URL", _URL_RE, "[网址]", None),
     ("手机号", _MOBILE_RE, "[手机号]", None),
@@ -117,6 +119,7 @@ class RedactResult:
         sanitized:  脱敏后的文本（用于传给 LLM、写日志）
         hits:       命中的 PII 列表（按首次发现顺序），例 ["手机号", "身份证"]
     """
+
     original: str
     sanitized: str
     hits: List[str] = field(default_factory=list)
@@ -148,10 +151,13 @@ def redact(text: Optional[str]) -> RedactResult:
         hits: List[str] = []
 
         for name, regex, placeholder, validator in _PATTERNS:
-            def _replace(match: re.Match,
-                         _name: str = name,
-                         _validator: Optional[Callable[[str], bool]] = validator,
-                         _placeholder: str = placeholder) -> str:
+
+            def _replace(
+                match: re.Match,
+                _name: str = name,
+                _validator: Optional[Callable[[str], bool]] = validator,
+                _placeholder: str = placeholder,
+            ) -> str:
                 matched = match.group(0)
                 if _validator and not _validator(matched):
                     return matched  # 不符合校验，原样保留（不计数）

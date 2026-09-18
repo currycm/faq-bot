@@ -13,6 +13,7 @@
    造成索引矩阵与查询向量不在同一个空间里 —— 表现是"同一个问题
    问两次，结果不一样"，而且极难排查。
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -65,8 +66,7 @@ class TfidfVectorizerImpl(BaseVectorizer):
     def transform(self, texts: list[str]):
         if not self._fitted:
             raise RuntimeError(
-                "TfidfVectorizerImpl 尚未 fit。请先调用 fit(corpus) 构建索引，"
-                "在线问答阶段只能调用 transform。"
+                "TfidfVectorizerImpl 尚未 fit。请先调用 fit(corpus) 构建索引，在线问答阶段只能调用 transform。"
             )
         return self.vec.transform(texts)
 
@@ -105,7 +105,7 @@ class BertVectorizerImpl(BaseVectorizer):
 
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         self.model = AutoModel.from_pretrained(self.model_name).to(self.device)
-        self.model.eval()                      # 关掉 dropout，保证结果稳定
+        self.model.eval()  # 关掉 dropout，保证结果稳定
         self._torch = torch
         self._fitted = True
 
@@ -185,11 +185,11 @@ class BgeVectorizerImpl(BaseVectorizer):
         # （gunicorn -w），不是进程内多线程。（config.TORCH_NUM_THREADS 可调）
         try:
             import torch
+
             _prev = torch.get_num_threads()
             torch.set_num_threads(config.TORCH_NUM_THREADS)
-            print(f"[vectorizer:bge] torch 线程数 {_prev} → "
-                  f"{config.TORCH_NUM_THREADS}（避免并发下的线程过订阅）")
-        except Exception as exc:                       # 不因设置失败而影响启动
+            print(f"[vectorizer:bge] torch 线程数 {_prev} → {config.TORCH_NUM_THREADS}（避免并发下的线程过订阅）")
+        except Exception as exc:  # 不因设置失败而影响启动
             print(f"[vectorizer:bge] 设置 torch 线程数失败（忽略）：{exc}")
 
         # trust_remote_code=False：BGE-small-zh-v1.5 是官方模型，无需自定义代码
@@ -200,8 +200,7 @@ class BgeVectorizerImpl(BaseVectorizer):
         # 预热一次，避免首次请求把模型编译耗时算进延迟
         self.transform(corpus[0:1] if corpus else ["预热"])
         _from = f"（本地随包）{self.model_path}" if self.model_path != self.model_name else self.model_name
-        print(f"[vectorizer:bge] 模型加载完成：{_from} "
-              f"dim={self.dim} device={self.device}")
+        print(f"[vectorizer:bge] 模型加载完成：{_from} dim={self.dim} device={self.device}")
 
     def transform(self, texts: list[str]) -> np.ndarray:
         if not self._fitted:
@@ -225,8 +224,9 @@ class BgeVectorizerImpl(BaseVectorizer):
         # sentence-transformers 6.x 把方法重命名了，兼容老版本
         if not self._fitted:
             return 0
-        getter = getattr(self.model, "get_embedding_dimension",
-                         None) or getattr(self.model, "get_sentence_embedding_dimension")
+        getter = getattr(self.model, "get_embedding_dimension", None) or getattr(
+            self.model, "get_sentence_embedding_dimension"
+        )
         return getter()
 
 

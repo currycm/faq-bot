@@ -40,25 +40,20 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = REPO_ROOT / "data" / "crawled"
 
 USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/120.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
 # 列表页（绝对地址）+ 栏目中文名 + 来源部门
 LIST_PAGES: list[tuple[str, str, str]] = [
     # 教务处
-    ("https://jwc.niit.edu.cn/2370/list.htm",          "通知公告", "教务处"),
-    ("https://jwc.niit.edu.cn/2369/list.htm",          "教学动态", "教务处"),
-
+    ("https://jwc.niit.edu.cn/2370/list.htm", "通知公告", "教务处"),
+    ("https://jwc.niit.edu.cn/2369/list.htm", "教学动态", "教务处"),
     # 学工处
-    ("https://xsc.niit.edu.cn/3818/list.htm",          "通知公告", "学工处"),
-    ("https://xsc.niit.edu.cn/gygl1/list.htm",         "公寓管理", "学工处"),
-    ("https://xsc.niit.edu.cn/jlpy/list.htm",          "奖励评优", "学工处"),
-
+    ("https://xsc.niit.edu.cn/3818/list.htm", "通知公告", "学工处"),
+    ("https://xsc.niit.edu.cn/gygl1/list.htm", "公寓管理", "学工处"),
+    ("https://xsc.niit.edu.cn/jlpy/list.htm", "奖励评优", "学工处"),
     # 数智化处
-    ("https://xxh.niit.edu.cn/2265/list.htm",          "通知公告", "数智化处"),
-
+    ("https://xxh.niit.edu.cn/2265/list.htm", "通知公告", "数智化处"),
     # 后勤
     # 后勤通知公告栏目页 4910 报"找不到对应的栏目"，暂留空
 ]
@@ -76,11 +71,11 @@ class ListPageParser(HTMLParser):
     def __init__(self, base_url: str):
         super().__init__()
         self.base = base_url
-        self.items: list[dict] = []     # {url, title, date}
+        self.items: list[dict] = []  # {url, title, date}
         self._current_href: str | None = None
         self._current_text: list[str] = []
         self._after_link_buf: list[str] = []  # 链接之后的日期文本
-        self._state = "idle"            # idle | in_a | after_a
+        self._state = "idle"  # idle | in_a | after_a
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag == "a":
@@ -101,7 +96,7 @@ class ListPageParser(HTMLParser):
         elif self._state == "after_a":
             self._after_link_buf.append(data)
 
-    def close(self) -> None:                     # type: ignore[override]
+    def close(self) -> None:  # type: ignore[override]
         super().close()
         for href in [self._current_href] if self._current_href else []:
             url = urllib.parse.urljoin(self.base, href) if href else None
@@ -109,8 +104,9 @@ class ListPageParser(HTMLParser):
                 continue
             title = re.sub(r"\s+", " ", "".join(self._current_text)).strip()
             date_text = re.sub(r"\s+", "", "".join(self._after_link_buf)).strip()
-            date_match = re.search(r"(\d{4}[-/]?\d{2}[-/]?\d{2})", date_text) \
-                or re.search(r"(\d{4}[-/]?\d{2}[-/]?\d{2})", title)
+            date_match = re.search(r"(\d{4}[-/]?\d{2}[-/]?\d{2})", date_text) or re.search(
+                r"(\d{4}[-/]?\d{2}[-/]?\d{2})", title
+            )
             date = date_match.group(1).replace("/", "-") if date_match else ""
             if title:
                 self.items.append({"url": url, "title": title, "date": date})
@@ -258,8 +254,7 @@ def derive_id(site: str, cat: str, idx: int) -> str:
     return f"{site}_{cat}_{idx:03d}"
 
 
-def crawl_one(list_url: str, category: str, source: str,
-              max_pages: int, delay: float) -> list[dict]:
+def crawl_one(list_url: str, category: str, source: str, max_pages: int, delay: float) -> list[dict]:
     """抓一个栏目：列表 → 详情。"""
     print(f"\n[栏目] {source} / {category}  → {list_url}")
     items = crawl_listing(list_url, max_pages, delay)
@@ -291,12 +286,9 @@ def crawl_one(list_url: str, category: str, source: str,
 
 def main() -> None:
     p = argparse.ArgumentParser(description="爬取南工业职四部门通知")
-    p.add_argument("--site", choices=["jwc", "xsc", "xxh", "hqglc", "all"],
-                   default="all")
-    p.add_argument("--max-pages", type=int, default=2,
-                   help="每个列表最多翻几页（默认 2）")
-    p.add_argument("--delay", type=float, default=1.5,
-                   help="请求间隔秒数（默认 1.5，避免压垮学校服务器）")
+    p.add_argument("--site", choices=["jwc", "xsc", "xxh", "hqglc", "all"], default="all")
+    p.add_argument("--max-pages", type=int, default=2, help="每个列表最多翻几页（默认 2）")
+    p.add_argument("--delay", type=float, default=1.5, help="请求间隔秒数（默认 1.5，避免压垮学校服务器）")
     args = p.parse_args()
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -313,8 +305,7 @@ def main() -> None:
         site_key = url.split("//", 1)[1].split(".", 1)[0]
         out_path = OUT_DIR / f"{site_key}_{cat}.json"
         out_path.write_text(
-            json.dumps({"source": src, "category": cat, "records": recs},
-                       ensure_ascii=False, indent=2),
+            json.dumps({"source": src, "category": cat, "records": recs}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         print(f"  → 写入 {out_path}  ({len(recs)} 条)")

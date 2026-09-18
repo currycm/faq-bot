@@ -28,6 +28,7 @@
     - Lua 脚本的语义应在真实 Redis 上联调确认（单元测试用 FakeRedis
       只覆盖包装层逻辑）。
 """
+
 from __future__ import annotations
 
 import time
@@ -81,23 +82,27 @@ class RedisRateLimiter:
     :param client: 测试注入用；生产不传，内部按 url 自建。
     """
 
-    def __init__(self, url: str, capacity: int, refill_rate: float, name: str,
-                 socket_timeout: float = 1.0, client=None):
+    def __init__(
+        self, url: str, capacity: int, refill_rate: float, name: str, socket_timeout: float = 1.0, client=None
+    ):
         import redis as redis_lib
 
         self.capacity = float(capacity)
         self.refill_rate = float(refill_rate)
         self.name = name
         self._prefix = "faqbot:rl"
-        self._client = client if client is not None else redis_lib.Redis.from_url(
-            url,
-            socket_timeout=socket_timeout,
-            socket_connect_timeout=socket_timeout,
-            decode_responses=True,
+        self._client = (
+            client
+            if client is not None
+            else redis_lib.Redis.from_url(
+                url,
+                socket_timeout=socket_timeout,
+                socket_connect_timeout=socket_timeout,
+                decode_responses=True,
+            )
         )
         # Redis 故障时的进程内降级桶：同一个 key 在本进程内继续计数
-        self._fallback = RateLimiter(capacity=capacity, refill_rate=refill_rate,
-                                     name=f"{name}-fallback")
+        self._fallback = RateLimiter(capacity=capacity, refill_rate=refill_rate, name=f"{name}-fallback")
         self._script = self._client.register_script(_TOKEN_BUCKET_LUA)
         self._err_state: dict = {}
 
@@ -110,9 +115,7 @@ class RedisRateLimiter:
             )
             return int(res[0]) == 1
         except Exception as exc:
-            _throttled_log("redis_limiter_error",
-                           {"limiter": self.name, "error": str(exc)[:200]},
-                           self._err_state)
+            _throttled_log("redis_limiter_error", {"limiter": self.name, "error": str(exc)[:200]}, self._err_state)
             return self._fallback.allow(key, cost)
 
     def reset(self, key: Optional[str] = None) -> None:
@@ -123,13 +126,11 @@ class RedisRateLimiter:
                 for k in self._client.scan_iter(pattern):
                     self._client.delete(k)
             else:
-                self._client.delete(
-                    f"{self._prefix}:{self.name}:{key or '__unidentified__'}")
+                self._client.delete(f"{self._prefix}:{self.name}:{key or '__unidentified__'}")
         except Exception as exc:
-            _throttled_log("redis_limiter_error",
-                           {"limiter": self.name, "op": "reset",
-                            "error": str(exc)[:200]},
-                           self._err_state)
+            _throttled_log(
+                "redis_limiter_error", {"limiter": self.name, "op": "reset", "error": str(exc)[:200]}, self._err_state
+            )
             self._fallback.reset(key)
 
     def stats(self) -> dict:
@@ -149,9 +150,17 @@ class RedisBudgetGuard:
     条记录，ZRANGE 全量拉取的开销可忽略。
     """
 
-    def __init__(self, url: str, window_sec: float = 3600, max_calls: int = 500,
-                 max_cost_cny: float = 10.0, avg_cost_per_call: float = 0.01,
-                 name: str = "llm", socket_timeout: float = 1.0, client=None):
+    def __init__(
+        self,
+        url: str,
+        window_sec: float = 3600,
+        max_calls: int = 500,
+        max_cost_cny: float = 10.0,
+        avg_cost_per_call: float = 0.01,
+        name: str = "llm",
+        socket_timeout: float = 1.0,
+        client=None,
+    ):
         import redis as redis_lib
 
         self.window_sec = float(window_sec)
@@ -160,15 +169,21 @@ class RedisBudgetGuard:
         self.avg_cost_per_call = float(avg_cost_per_call)
         self.name = name
         self._key = f"faqbot:budget:{name}"
-        self._client = client if client is not None else redis_lib.Redis.from_url(
-            url,
-            socket_timeout=socket_timeout,
-            socket_connect_timeout=socket_timeout,
-            decode_responses=True,
+        self._client = (
+            client
+            if client is not None
+            else redis_lib.Redis.from_url(
+                url,
+                socket_timeout=socket_timeout,
+                socket_connect_timeout=socket_timeout,
+                decode_responses=True,
+            )
         )
         self._fallback = BudgetGuard(
-            window_sec=window_sec, max_calls=max_calls,
-            max_cost_cny=max_cost_cny, avg_cost_per_call=avg_cost_per_call,
+            window_sec=window_sec,
+            max_calls=max_calls,
+            max_cost_cny=max_cost_cny,
+            avg_cost_per_call=avg_cost_per_call,
             name=f"{name}-fallback",
         )
         self._err_state: dict = {}
@@ -192,30 +207,23 @@ class RedisBudgetGuard:
 
     def check(self, estimated_cost_cny: Optional[float] = None) -> tuple[bool, str]:
         """检查当前是否允许调用 LLM。接口与 BudgetGuard.check 一致。"""
-        cost = (estimated_cost_cny if estimated_cost_cny is not None
-                else self.avg_cost_per_call)
+        cost = estimated_cost_cny if estimated_cost_cny is not None else self.avg_cost_per_call
         try:
             calls, total = self._window_snapshot()
             if calls >= self.max_calls:
-                return False, (
-                    f"调用次数熔断：{self.window_sec:.0f}s 内已调用 {calls} 次，"
-                    f"超过上限 {self.max_calls}"
-                )
+                return False, (f"调用次数熔断：{self.window_sec:.0f}s 内已调用 {calls} 次，超过上限 {self.max_calls}")
             if total + cost >= self.max_cost_cny:
                 return False, (
-                    f"成本熔断：{self.window_sec:.0f}s 内已花费 ¥{total:.4f}，"
-                    f"接近上限 ¥{self.max_cost_cny:.2f}"
+                    f"成本熔断：{self.window_sec:.0f}s 内已花费 ¥{total:.4f}，接近上限 ¥{self.max_cost_cny:.2f}"
                 )
             return True, ""
         except Exception as exc:
-            _throttled_log("redis_budget_error", {"error": str(exc)[:200]},
-                           self._err_state)
+            _throttled_log("redis_budget_error", {"error": str(exc)[:200]}, self._err_state)
             return self._fallback.check(estimated_cost_cny)
 
     def record(self, actual_cost_cny: Optional[float] = None) -> None:
         """记录一次调用（仅在 LLM 真正发生后调用，接口与 BudgetGuard 一致）。"""
-        cost = (actual_cost_cny if actual_cost_cny is not None
-                else self.avg_cost_per_call)
+        cost = actual_cost_cny if actual_cost_cny is not None else self.avg_cost_per_call
         try:
             now = time.time()
             member = f"{now:.6f}:{cost:.8f}:{uuid.uuid4().hex}"
@@ -225,9 +233,7 @@ class RedisBudgetGuard:
             pipe.pexpire(self._key, int(self.window_sec * 2 * 1000) + 60000)
             pipe.execute()
         except Exception as exc:
-            _throttled_log("redis_budget_error",
-                           {"op": "record", "error": str(exc)[:200]},
-                           self._err_state)
+            _throttled_log("redis_budget_error", {"op": "record", "error": str(exc)[:200]}, self._err_state)
             self._fallback.record(actual_cost_cny)
 
     def stats(self) -> dict:
@@ -242,8 +248,7 @@ class RedisBudgetGuard:
                 "max_calls": self.max_calls,
                 "max_cost_cny": self.max_cost_cny,
                 # 语义与 BudgetGuard.stats 对齐："下一次 check 会不会被挡"
-                "is_open": (calls >= self.max_calls
-                            or total + self.avg_cost_per_call >= self.max_cost_cny),
+                "is_open": (calls >= self.max_calls or total + self.avg_cost_per_call >= self.max_cost_cny),
             }
         except Exception:
             return self._fallback.stats()

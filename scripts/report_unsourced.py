@@ -44,9 +44,7 @@ HARD_FACTS = [
 # 只收「指向权威来源」或「明确自我限定」的表述 ——
 # 「约 2 个工作日」「一般为」这类对数值的粗略修饰不算兜底，
 # 否则会把 transcript（写明 行政楼 302 / 每天限 3 份免费）误判成低风险。
-HEDGE = re.compile(
-    r"以[^。；，]{0,16}为准|具体(?:以|见|详见)|详见原文|详情见|见\s*[a-z_]+|请以"
-)
+HEDGE = re.compile(r"以[^。；，]{0,16}为准|具体(?:以|见|详见)|详见原文|详情见|见\s*[a-z_]+|请以")
 
 
 def scan_hard_facts(answer: str) -> list[str]:
@@ -73,7 +71,7 @@ def _frag(answer: str, start: int, end: int, tail: int = 10) -> str:
     cut = max((seg.rfind(d) for d in DELIM), default=-1)
     if cut != -1:
         lo += cut + 1
-    return answer[lo:min(len(answer), end + tail)].strip().replace("\n", " ")
+    return answer[lo : min(len(answer), end + tail)].strip().replace("\n", " ")
 
 
 def extract_samples(answer: str) -> list[str]:
@@ -135,18 +133,20 @@ def build() -> str:
                 src_flag = f"顶层 source={top_src}（⚠️ 经核对该部门名不存在，应改为真实部门）"
             else:
                 src_flag = f"顶层 source={top_src}（仅文本声明，无 url 可核，不计入溯源）"
-        rows.append({
-            "tag": it["tag"],
-            "nq": len(it["questions"]),
-            "facts": facts,
-            "hedge": hedge,
-            "level": level,
-            "why": why,
-            "samples": extract_samples(ans) if level in ("P0", "P1") else [],
-            "first_q": it["questions"][0],
-            "top_src": top_src,
-            "src_flag": src_flag,
-        })
+        rows.append(
+            {
+                "tag": it["tag"],
+                "nq": len(it["questions"]),
+                "facts": facts,
+                "hedge": hedge,
+                "level": level,
+                "why": why,
+                "samples": extract_samples(ans) if level in ("P0", "P1") else [],
+                "first_q": it["questions"][0],
+                "top_src": top_src,
+                "src_flag": src_flag,
+            }
+        )
 
     order = {"P0": 0, "P1": 1, "P2": 2, "豁免": 3}
     rows.sort(key=lambda r: (order[r["level"]], -r["nq"], r["tag"]))
@@ -166,30 +166,45 @@ def build() -> str:
     L.append("")
     L.append("| 类别 | 意图数 | 溯源状态 | 说明 |")
     L.append("|---|---|---|---|")
-    L.append(f"| `real_notice_v3` | {len(noticed)} | ✅ 有官方通知原文 | 全部是部门前缀 `jwc_` / `xsc_` / `xxh_`，含 `url` + `title` + `date` |")
-    L.append(f"| `official_doc` | {len(official_doc)} | ✅ 有官方文档/页面 | {', '.join('`%s`' % i['tag'] for i in official_doc) or '—'}，含 `url` + `title`，来源为官方 PDF/网页（v1.6.0 新增）|")
-    L.append(f"| `guidance` | {len(guidance)} | ⚠️ 有标注、无原文 | {', '.join('`%s`' % i['tag'] for i in guidance)}，正文已声明以官方为准 |")
-    L.append(f"| `manual_verified` | {len(manual)} | 🟡 **人工核实，无原文** | "
-             f"无 url 可引，但有核实对象与核实日期（见第三节）；可信度高于"
-             f"「作者推测」、低于「有原文可核」 |")
+    L.append(
+        f"| `real_notice_v3` | {len(noticed)} | ✅ 有官方通知原文 | 全部是部门前缀 `jwc_` / `xsc_` / `xxh_`，含 `url` + `title` + `date` |"
+    )
+    L.append(
+        f"| `official_doc` | {len(official_doc)} | ✅ 有官方文档/页面 | {', '.join('`%s`' % i['tag'] for i in official_doc) or '—'}，含 `url` + `title`，来源为官方 PDF/网页（v1.6.0 新增）|"
+    )
+    L.append(
+        f"| `guidance` | {len(guidance)} | ⚠️ 有标注、无原文 | {', '.join('`%s`' % i['tag'] for i in guidance)}，正文已声明以官方为准 |"
+    )
+    L.append(
+        f"| `manual_verified` | {len(manual)} | 🟡 **人工核实，无原文** | "
+        f"无 url 可引，但有核实对象与核实日期（见第三节）；可信度高于"
+        f"「作者推测」、低于「有原文可核」 |"
+    )
     L.append(
         f"| **无 `_meta`** | **{len(unsourced)}** | ❌ **无溯源** | "
         + (", ".join("`%s`" % i["tag"] for i in unsourced) or "—")
         + " |"
     )
     L.append("")
-    L.append(f"> ⚠️ **关于顶层 `source` 字段**：本清单里标「无 `_meta`」的意图中，"
-             f"有 {sum(1 for r in rows if r['top_src'])} 条带顶层 `source`")
-    L.append("> （" + ("、".join("「%s」" % r["top_src"] for r in rows if r["top_src"]) or "无")
-             + "），但那只是作者手填的文本声明，**没有 url 可核**，")
+    L.append(
+        f"> ⚠️ **关于顶层 `source` 字段**：本清单里标「无 `_meta`」的意图中，"
+        f"有 {sum(1 for r in rows if r['top_src'])} 条带顶层 `source`"
+    )
+    L.append(
+        "> （"
+        + ("、".join("「%s」" % r["top_src"] for r in rows if r["top_src"]) or "无")
+        + "），但那只是作者手填的文本声明，**没有 url 可核**，"
+    )
     L.append("> 且代码（`app.py` / `agent.py`）**根本不读取该字段**——UI 来源标签来自兜底信息。")
     L.append("> 经核对，其中「后勤保障部」「学生处心理咨询中心」这两个部门名**在学校机构设置里并不存在**")
     L.append("> （真实应为「学工处·学生公寓管理科」「学工处·心理健康教育教研室」，`dorm_repair` / `psych_counseling`")
     L.append("> 已在 v1.6.0 改为 `official_doc` 并修正）。**因此顶层 `source` 一律不计入「有溯源」。**")
     L.append("")
     if unsourced:
-        L.append(f"**当前规律**：从官方通知/文档生成的意图（部门前缀）都带溯源；"
-                 f"仍未溯源的 {len(unsourced)} 条见第二节风险分级。")
+        L.append(
+            f"**当前规律**：从官方通知/文档生成的意图（部门前缀）都带溯源；"
+            f"仍未溯源的 {len(unsourced)} 条见第二节风险分级。"
+        )
     else:
         L.append("**当前状态：全部意图都已标注来源类型**（通知原文 / 官方文档 / 人工核实 / 引导型），")
         L.append("本清单转为审计留档。⚠️ 其中 `manual_verified` 一档**没有原文可引、会随政策变化过期**，")
@@ -215,7 +230,7 @@ def build() -> str:
     L.append("## 三、逐条明细")
     L.append("")
     p0 = [x for x in rows if x["level"] == "P0"]
-    if p0:      # 没有 P0 时不要留下空标题（v1.8.0 之后就出现过一次）
+    if p0:  # 没有 P0 时不要留下空标题（v1.8.0 之后就出现过一次）
         L.append("### P0 —— 优先补齐（按问法数排序）")
         L.append("")
         for r in p0:
@@ -228,7 +243,11 @@ def build() -> str:
                 L.append(f"- 来源声明：{r['src_flag']}")
             L.append("")
 
-    for lvl, title in (("P1", "P1 —— 有兜底，但事实仍应核对"), ("P2", "P2 —— 泛化描述"), ("豁免", "豁免 —— 无需外部溯源")):
+    for lvl, title in (
+        ("P1", "P1 —— 有兜底，但事实仍应核对"),
+        ("P2", "P2 —— 泛化描述"),
+        ("豁免", "豁免 —— 无需外部溯源"),
+    ):
         sub = [x for x in rows if x["level"] == lvl]
         if not sub:
             continue
@@ -262,7 +281,11 @@ def build() -> str:
         for m in re.finditer(r"0\d{2,3}-\d{7,8}|400-\d{3}-\d{4}|1\d{10}", ans):
             num = m.group(0)
             frag = _frag(ans, m.start(), m.end(), tail=6)
-            note = "号码为递增序列 `87654321`，且区号 `010` 是北京 —— 本校在南京" if num == "010-87654321" else "需核实是否为官方号码"
+            note = (
+                "号码为递增序列 `87654321`，且区号 `010` 是北京 —— 本校在南京"
+                if num == "010-87654321"
+                else "需核实是否为官方号码"
+            )
             L.append(f"| `{r['tag']}` | `{frag}` | {note} |")
     L.append("")
     L.append("## 五、建议的补齐路线")
@@ -271,12 +294,20 @@ def build() -> str:
     L.append("   （v1.8.0 已把 `course_selection` / `library_borrow` / `transcript` / `medical` 等")
     L.append("   原 P0 条目通过人工核实补齐，现为 `manual_verified` —— 可作后续补条的参照格式。）")
     L.append("2. **补的方式三选一**：")
-    L.append("   - 拿到官方通知原文 → 改写为「通知摘录型」，补 `_meta{source, category, url, title, date, type: real_notice_v3}`；")
-    L.append("   - 拿到官方文档/网页（PDF、办事指南页等）→ 补 `_meta{...type: official_doc}`，正文保留可核实事实（如 `dorm_repair` / `psych_counseling` 在 v1.6.0 的做法）；")
+    L.append(
+        "   - 拿到官方通知原文 → 改写为「通知摘录型」，补 `_meta{source, category, url, title, date, type: real_notice_v3}`；"
+    )
+    L.append(
+        "   - 拿到官方文档/网页（PDF、办事指南页等）→ 补 `_meta{...type: official_doc}`，正文保留可核实事实（如 `dorm_repair` / `psych_counseling` 在 v1.6.0 的做法）；"
+    )
     L.append("   - 拿不到原文 → 改为「引导型」，删掉所有具体数字，只留指引 + 官方渠道，")
-    L.append("     补 `_meta.type = \"guidance\"`（照 `jwc_major_change` 的样子写）。")
-    L.append("   - **顺手核一遍顶层 `source`**：凡带该字段的，确认部门名在学校机构设置里真实存在，否则修正或删除（死字段，不读也要保证别误导人）。")
-    L.append("3. **原则不变**：宁可引导，不可编造。库里凡是「学校具体政策」的答案，编一条就把整个项目的可信度搭进去了。")
+    L.append('     补 `_meta.type = "guidance"`（照 `jwc_major_change` 的样子写）。')
+    L.append(
+        "   - **顺手核一遍顶层 `source`**：凡带该字段的，确认部门名在学校机构设置里真实存在，否则修正或删除（死字段，不读也要保证别误导人）。"
+    )
+    L.append(
+        "3. **原则不变**：宁可引导，不可编造。库里凡是「学校具体政策」的答案，编一条就把整个项目的可信度搭进去了。"
+    )
     L.append("4. 每补一条，把 `meta.changelog` 记一笔，并重跑本脚本把清单刷新。")
     L.append("")
     L.append("## 附录：有溯源意图对照（补 `_meta` 时照这个格式写）")
@@ -302,7 +333,9 @@ def build() -> str:
     L.append("")
     for it in guidance:
         m = it["_meta"]
-        L.append(f"`{it['tag']}` 是 `guidance` 型（无原文可摘）：`source={m['source']}`、`title={m['title']}`、`date={m['date']}`。")
+        L.append(
+            f"`{it['tag']}` 是 `guidance` 型（无原文可摘）：`source={m['source']}`、`title={m['title']}`、`date={m['date']}`。"
+        )
         L.append("")
         L.append(f"> {m['note']}")
         L.append("")

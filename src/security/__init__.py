@@ -22,6 +22,7 @@
 普通调用方只需要用 enforce_security() 一个函数。
 它按顺序跑四道防线，返回统一的 SecurityVerdict。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -44,6 +45,7 @@ class SecurityVerdict:
         injection_rules: 命中的注入规则（仅 medium 也记录）
         budget_consumed: 本次是否消耗了预算（用于上层决定是否调 LLM）
     """
+
     allowed: bool = True
     refusal_text: str = ""
     reason: str = ""
@@ -104,19 +106,21 @@ def enforce_security(
             if getattr(config, "SECURITY_LOG_ENABLED", True):
                 try:
                     safe_preview = redact.redact(query or "").sanitized[:80]
-                    logger.write_jsonl(config.LOG_PATH, {
-                        "event": "security_injection_blocked",
-                        "rules": verdict.rules,
-                        "ip": ip,
-                        "user_id": user_id,
-                        "query_preview": safe_preview,
-                    })
+                    logger.write_jsonl(
+                        config.LOG_PATH,
+                        {
+                            "event": "security_injection_blocked",
+                            "rules": verdict.rules,
+                            "ip": ip,
+                            "user_id": user_id,
+                            "query_preview": safe_preview,
+                        },
+                    )
                 except Exception:
                     pass
             return SecurityVerdict(
                 allowed=False,
-                refusal_text=getattr(config, "INJECTION_REFUSAL_TEXT", "")
-                    or injection.get_refusal_text(),
+                refusal_text=getattr(config, "INJECTION_REFUSAL_TEXT", "") or injection.get_refusal_text(),
                 reason="injection:" + ",".join(verdict.rules),
                 # 2026-09 修复：拦截时不再把原文当 sanitized 返回。
                 # 本字段语义是"可直接喂 LLM 的版本"，原文透传会给
@@ -182,13 +186,16 @@ def enforce_security(
     # 刚检测出手机号，就把含手机号的原文写进日志，等于没脱。
     if pii_hits and getattr(config, "SECURITY_LOG_ENABLED", True):
         try:
-            logger.write_jsonl(config.LOG_PATH, {
-                "event": "security_redaction",
-                "hits": pii_hits,
-                "ip": ip,
-                "user_id": user_id,
-                "query_preview": sanitized[:80],
-            })
+            logger.write_jsonl(
+                config.LOG_PATH,
+                {
+                    "event": "security_redaction",
+                    "hits": pii_hits,
+                    "ip": ip,
+                    "user_id": user_id,
+                    "query_preview": sanitized[:80],
+                },
+            )
         except Exception:
             pass
 

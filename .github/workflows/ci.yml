@@ -36,9 +36,12 @@ jobs:
           path: ~/.cache/huggingface
           key: hf-${{ runner.os }}-bge-small-zh-v1.5
 
+      # ruff 必须锁版本：格式化风格会随小版本变化（2026-09-18 踩过一次：
+      # CI 装到 0.16.8、本地是 0.12.0，ruff format --check 直接红掉 52 个文件）。
+      # 本地/CI 用同一个版本，改版本时同步改这里并全量重排一次。
       - name: Lint (ruff)
         run: |
-          pip install ruff
+          pip install ruff==0.16.8
           ruff check .
           ruff format --check .
 

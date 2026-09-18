@@ -25,6 +25,7 @@ v1 直通（pass-through）；精排实现见 CrossEncoderRanker（默认关闭�
     !! 打开 ENABLE_RERANK 前必须用 python evaluate.py --scan 重新标定
        RERANK_THRESHOLD（config 里的 0.5 只是占位）。
 """
+
 from __future__ import annotations
 
 import sys
@@ -70,12 +71,11 @@ class CrossEncoderRanker(BaseRanker):
         try:
             from sentence_transformers import CrossEncoder
         except ImportError as exc:
-            raise ImportError(
-                "使用精排需要安装：pip install sentence-transformers torch"
-            ) from exc
+            raise ImportError("使用精排需要安装：pip install sentence-transformers torch") from exc
         try:
             # 显式 sigmoid：分数落在 0~1，RERANK_THRESHOLD 才有稳定语义
             from torch import nn
+
             self.model = CrossEncoder(self.model_name, activation_fn=nn.Sigmoid())
         except TypeError:
             # 个别 sentence-transformers 版本签名不同 → 退回默认加载
@@ -104,6 +104,5 @@ def build_ranker(enable: bool | None = None) -> BaseRanker:
     try:
         return CrossEncoderRanker()
     except Exception as exc:
-        print(f"[ranker] ⚠️ 精排模型加载失败，降级为直通（不重排）：{exc}",
-              file=sys.stderr)
+        print(f"[ranker] ⚠️ 精排模型加载失败，降级为直通（不重排）：{exc}", file=sys.stderr)
         return PassThroughRanker()

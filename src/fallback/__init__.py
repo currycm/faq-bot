@@ -11,4 +11,5 @@
     2. 实时问题用真实数据，不靠 LLM 记忆
     3. 任何一层失败都降级到固定话术，永远不裸抛异常
 """
+
 from .router import QueryType, dispatch  # noqa: F401

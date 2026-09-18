@@ -34,6 +34,7 @@
     python scripts/evaluate_holdout.py                     # K=8,6,5,4,3 × 3 个随机划分
     python scripts/evaluate_holdout.py --ks 8,5,3 --seeds 5
 """
+
 from __future__ import annotations
 
 import argparse
@@ -46,11 +47,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import evaluate as ev                                      # noqa: E402
-from src import config, preprocess                         # noqa: E402
-from src.agent import flatten, load_corpus                 # noqa: E402
-from src.retriever import Retriever                        # noqa: E402
-from src.vectorizer import build_vectorizer                # noqa: E402
+import evaluate as ev  # noqa: E402
+from src import config, preprocess  # noqa: E402
+from src.agent import flatten, load_corpus  # noqa: E402
+from src.retriever import Retriever  # noqa: E402
+from src.vectorizer import build_vectorizer  # noqa: E402
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -87,10 +88,14 @@ def probe(retr: Retriever, cases: list[tuple[str, str | None]]) -> dict:
         if exp in top3:
             hit3 += 1
     return {
-        "n": n_ans, "hit1": hit1 / max(1, n_ans), "hit3": hit3 / max(1, n_ans),
+        "n": n_ans,
+        "hit1": hit1 / max(1, n_ans),
+        "hit3": hit3 / max(1, n_ans),
         "unmatched": unmatched / max(1, n_ans),
-        "false_trigger": false_trigger, "n_rej": n_rej,
-        "per_intent_miss": per_intent_miss, "per_intent_tot": per_intent_tot,
+        "false_trigger": false_trigger,
+        "n_rej": n_rej,
+        "per_intent_miss": per_intent_miss,
+        "per_intent_tot": per_intent_tot,
     }
 
 
@@ -104,12 +109,14 @@ def main() -> None:
     intents = load_corpus()
     total_q = sum(len(it["questions"]) for it in intents)
     sizes = sorted(len(it["questions"]) for it in intents)
-    print(f"[语料] {len(intents)} 意图 / {total_q} 问法 ｜每意图问法数 最少 {sizes[0]} / 中位 "
-          f"{sizes[len(sizes)//2]} / 最多 {sizes[-1]}")
+    print(
+        f"[语料] {len(intents)} 意图 / {total_q} 问法 ｜每意图问法数 最少 {sizes[0]} / 中位 "
+        f"{sizes[len(sizes) // 2]} / 最多 {sizes[-1]}"
+    )
 
     vec = build_vectorizer()
     vec.fit([preprocess.cut(q) for it in intents for q in it["questions"]])
-    print(f"[就绪] 向量化 {vec.name} ｜ 耗时 {time.perf_counter()-t0:.1f}s\n")
+    print(f"[就绪] 向量化 {vec.name} ｜ 耗时 {time.perf_counter() - t0:.1f}s\n")
 
     test_cases = [(c["query"], c.get("expected_tag")) for c in ev.load_test_set()]
     ks = [int(x) for x in args.ks.split(",")]
@@ -122,8 +129,10 @@ def main() -> None:
     print("=" * 92)
     print(f"{'索引':>16} {'问法数':>7} | {'召回@1':>9} {'Top-3':>8} {'未识别':>8} | {'误触发':>8}")
     print("-" * 92)
-    print(f"{'全量（基线）':>16} {total_q:>7} | {base['hit1']:>8.1%} {base['hit3']:>8.1%} "
-          f"{base['unmatched']:>8.1%} | {base['false_trigger']}/{base['n_rej']}")
+    print(
+        f"{'全量（基线）':>16} {total_q:>7} | {base['hit1']:>8.1%} {base['hit3']:>8.1%} "
+        f"{base['unmatched']:>8.1%} | {base['false_trigger']}/{base['n_rej']}"
+    )
 
     # ---------------- 各 K ----------------
     rows = []
@@ -140,12 +149,13 @@ def main() -> None:
             held_out = [
                 (q, it["tag"])
                 for it, orig in zip(reduced, intents)
-                for q in orig["questions"] if q not in it["questions"]
+                for q in orig["questions"]
+                if q not in it["questions"]
             ]
             retr = Retriever(vec, flatten(reduced), text_fn=preprocess.cut)
             a = probe(retr, test_cases)
             if seed == 0:
-                b = probe(retr, held_out)          # 探针 B 只跑第一个划分（省时间）
+                b = probe(retr, held_out)  # 探针 B 只跑第一个划分（省时间）
                 last_miss_stats = {
                     "n_idx": sum(len(it["questions"]) for it in reduced),
                     "b": b,
@@ -157,14 +167,18 @@ def main() -> None:
         lo = min(a["hit1"] for a in acc)
         hi = max(a["hit1"] for a in acc)
         rows.append({"K": K, **m, "lo": lo, "hi": hi})
-        print(f"{'每意图留 %d 条' % K:>16} {last_miss_stats['n_idx']:>7} | "
-              f"{m['hit1']:>8.1%} {m['hit3']:>8.1%} {m['unmatched']:>8.1%} | "
-              f"{acc[0]['false_trigger']}/{acc[0]['n_rej']}   "
-              f"(召回@1 极差 {lo:.1%}~{hi:.1%}, {args.seeds} 次划分)")
+        print(
+            f"{'每意图留 %d 条' % K:>16} {last_miss_stats['n_idx']:>7} | "
+            f"{m['hit1']:>8.1%} {m['hit3']:>8.1%} {m['unmatched']:>8.1%} | "
+            f"{acc[0]['false_trigger']}/{acc[0]['n_rej']}   "
+            f"(召回@1 极差 {lo:.1%}~{hi:.1%}, {args.seeds} 次划分)"
+        )
     print("-" * 92)
     d = rows[-1]["hit1"] - base["hit1"]
-    print(f"最激进的一档（每意图留 {rows[-1]['K']} 条）相对全量基线：召回@1 "
-          f"{base['hit1']:.1%} → {rows[-1]['hit1']:.1%}（{'−' if d < 0 else '+'}{abs(d):.1%}）")
+    print(
+        f"最激进的一档（每意图留 {rows[-1]['K']} 条）相对全量基线：召回@1 "
+        f"{base['hit1']:.1%} → {rows[-1]['hit1']:.1%}（{'−' if d < 0 else '+'}{abs(d):.1%}）"
+    )
 
     # ---------------- 探针 B ----------------
     if last_miss_stats:

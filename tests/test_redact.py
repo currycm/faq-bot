@@ -5,6 +5,7 @@
 logs/qa.log——每跑一次测试就往生产日志塞一批假错误，误导排障。
 现改为标准 pytest 用例，写入 pytest 的 tmp_path 隔离目录，不碰真实日志。
 """
+
 from __future__ import annotations
 
 import json
@@ -36,22 +37,27 @@ def _secret_records() -> dict:
         "query_string_key": {
             "event": "weather_api_error",
             "url": "https://devapi.qweather.com/v7/weather/now",
-            "error": ("<urlopen error [Errno 401] Unauthorized: "
-                      "https://devapi.qweather.com/v7/weather/now"
-                      "?location=101190101&key=" + HEFENG_KEY + "&foo=bar>"),
+            "error": (
+                "<urlopen error [Errno 401] Unauthorized: "
+                "https://devapi.qweather.com/v7/weather/now"
+                "?location=101190101&key=" + HEFENG_KEY + "&foo=bar>"
+            ),
         },
         "sk_key_in_error": {
             "event": "llm_api_error",
             "model": "deepseek-chat",
-            "error": ('HTTPError: 401, Response: {"error":{"message":'
-                      '"Incorrect API key provided: ' + DEEPSEEK_KEY + '"}}'),
+            "error": (
+                'HTTPError: 401, Response: {"error":{"message":"Incorrect API key provided: ' + DEEPSEEK_KEY + '"}}'
+            ),
         },
         "authorization_header": {
             "event": "llm_api_error",
             "model": "deepseek-chat",
-            "error": ("urllib.error.URLError: <request "
-                      "url=https://api.deepseek.com/chat/completions "
-                      "headers={Authorization: Bearer " + DEEPSEEK_KEY + "}>"),
+            "error": (
+                "urllib.error.URLError: <request "
+                "url=https://api.deepseek.com/chat/completions "
+                "headers={Authorization: Bearer " + DEEPSEEK_KEY + "}>"
+            ),
         },
         "long_hex_token": {
             "event": "weather_api_error",

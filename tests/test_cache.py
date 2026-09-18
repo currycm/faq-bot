@@ -7,6 +7,7 @@
     3. 语料热更新（reload）后缓存必须作废，不能返回上一版答案
     4. 慢路径闸位占满时快速降级，不排队拖垮检索路径
 """
+
 from __future__ import annotations
 
 import sys
@@ -58,8 +59,8 @@ def test_lru_eviction():
     c = TTLCache(maxsize=2, ttl=0)
     c.set("a", 1)
     c.set("b", 2)
-    assert c.get("a") == 1        # a 变成最近使用
-    c.set("c", 3)                 # 应淘汰 b
+    assert c.get("a") == 1  # a 变成最近使用
+    c.set("c", 3)  # 应淘汰 b
     assert c.get("a") == 1
     assert c.get("c") == 3
     assert c.get("b") is None
@@ -67,9 +68,9 @@ def test_lru_eviction():
 
 def test_stats_counts_hits_and_misses():
     c = TTLCache(maxsize=4, ttl=0)
-    c.get("x")                    # miss
+    c.get("x")  # miss
     c.set("x", 1)
-    c.get("x")                    # hit
+    c.get("x")  # hit
     s = c.stats()
     assert s["hits"] == 1 and s["misses"] == 1
     assert s["hit_rate"] == 0.5
@@ -85,7 +86,7 @@ def test_thread_safe_under_concurrency():
             for i in range(300):
                 c.set(f"k{(n + i) % 128}", i)
                 c.get(f"k{i % 128}")
-        except Exception as exc:          # pragma: no cover
+        except Exception as exc:  # pragma: no cover
             errs.append(exc)
 
     ts = [threading.Thread(target=worker, args=(n,)) for n in range(8)]
@@ -128,10 +129,9 @@ def test_cache_never_bypasses_rate_limit(bot, monkeypatch):
     monkeypatch.setattr(agent_mod.config, "ANSWER_CACHE_ENABLED", True)
     agent_mod._answer_cache.clear()
 
-    ip = "10.77.77.77"                    # 独立 IP，避免与其他用例互扰
+    ip = "10.77.77.77"  # 独立 IP，避免与其他用例互扰
     cap = agent_mod.config.RATE_LIMIT_IP_CAPACITY
-    hits = [bot.ask(Q, user_id=f"rl-{i}", client_ip=ip)["matched"]
-            for i in range(cap)]
+    hits = [bot.ask(Q, user_id=f"rl-{i}", client_ip=ip)["matched"] for i in range(cap)]
     assert all(hits), "额度内应全部命中（说明缓存没把请求提前短路掉）"
 
     blocked = bot.ask(Q, user_id="rl-over", client_ip=ip)

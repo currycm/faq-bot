@@ -350,11 +350,11 @@ curl -X POST http://127.0.0.1:8000/ask \
 ```python
 from src.agent import FaqBot
 
-bot = FaqBot()                                   # 默认用 BGE；想对比可传 vectorizer_type="tfidf"
+bot = FaqBot()  # 默认用 BGE；想对比可传 vectorizer_type="tfidf"
 r = bot.ask("宿舍灯坏了找谁修", user_id="demo")
 print(r["matched"], r["tag"], r["answer"])
 
-bot.reload()                                     # 改了语料后热更新（会顺带清空答案缓存）
+bot.reload()  # 改了语料后热更新（会顺带清空答案缓存）
 ```
 
 ### 用 Docker 部署

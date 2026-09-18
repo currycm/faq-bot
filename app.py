@@ -23,6 +23,7 @@ v7.1 改动：前端去 AI 味 / 信息降噪
     5. 文案去客服腔：「正在思考…」→「查询中」，
        「已收到反馈，我们会改进」→ toast「谢谢」（不再在版面里残留）
 """
+
 from __future__ import annotations
 
 import os
@@ -199,6 +200,7 @@ _USE_LOCAL_BOT = not os.environ.get("FAQ_API_BASE")
 def _get_bot():
     """懒加载并缓存 FaqBot 单例（首次调用时构建向量索引 + 加载 BGE）。"""
     from src.agent import FaqBot
+
     return FaqBot()
 
 
@@ -336,10 +338,7 @@ def main() -> None:
         if not health.get("ready"):
             st.error("服务暂时不可用，请稍后再试。")
             if DEBUG:
-                st.caption(
-                    f"API：{API_BASE} ｜ status={health.get('status', 'unknown')} ｜ "
-                    f"{health.get('detail', '')}"
-                )
+                st.caption(f"API：{API_BASE} ｜ status={health.get('status', 'unknown')} ｜ {health.get('detail', '')}")
             st.stop()
 
         # 注：这里原本有个侧边栏（运行状态 / 反馈统计），已删除 —— 学生用不到，
@@ -403,17 +402,13 @@ def main() -> None:
                     if DEBUG:
                         with st.expander("调试信息"):
                             st.caption(
-                                f"trace_id: `{r.get('trace_id', 'n/a')}` ｜ "
-                                f"耗时 {r.get('latency_ms', 0):.0f} ms"
+                                f"trace_id: `{r.get('trace_id', 'n/a')}` ｜ 耗时 {r.get('latency_ms', 0):.0f} ms"
                             )
                             # api_ask 失败时的底层异常串只在调试模式可见
                             if r.get("_error"):
                                 st.caption(f"错误详情：{r['_error']}")
                             if r.get("matched"):
-                                st.caption(
-                                    f"命中意图 `{r.get('tag')}` ｜ "
-                                    f"相似度 {r.get('score', 0):.3f}"
-                                )
+                                st.caption(f"命中意图 `{r.get('tag')}` ｜ 相似度 {r.get('score', 0):.3f}")
                             else:
                                 st.caption(
                                     f"未命中 ｜ 最高相似度 {r.get('score', 0):.3f}"

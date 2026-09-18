@@ -13,6 +13,7 @@
     python evaluate.py --scan         # 遍历阈值，找最优点
     python evaluate.py --show-error   # 打印答错的样本，逐个分析
 """
+
 from __future__ import annotations
 
 import argparse
@@ -23,7 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from src.agent import FaqBot, clear_answer_cache, setup_stdio  # noqa: E402
-from src import config                              # noqa: E402
+from src import config  # noqa: E402
 
 
 def load_test_set(path: Path | None = None) -> list[dict]:
@@ -61,7 +62,7 @@ def evaluate(bot: FaqBot, cases: list[dict], threshold: float | None = None):
         r = bot.ask(q, user_id=f"eval-{i}", client_ip=f"10.0.{i // 250}.{i % 250 + 1}")
         top3_tags = [c["tag"] for c in r["candidates"]]
 
-        if expected:                                   # 应回答
+        if expected:  # 应回答
             if r["matched"] and r["tag"] == expected:
                 hit1 += 1
                 hit3 += 1
@@ -75,7 +76,7 @@ def evaluate(bot: FaqBot, cases: list[dict], threshold: float | None = None):
                 if expected in top3_tags:
                     hit3 += 1
                 errors.append((q, expected, r["tag"], r["score"], r["matched_question"], "答错意图"))
-        else:                                          # 应拒答
+        else:  # 应拒答
             if r["matched"]:
                 false_trigger += 1
                 errors.append((q, "（应拒答）", r["tag"], r["score"], r["matched_question"], "误触发"))
@@ -134,24 +135,30 @@ def scan_threshold(bot: FaqBot, cases: list[dict]) -> None:
         #    18 个阈值会得到 18 行完全一样的数字（曲线退化成直线）。
         clear_answer_cache()
         m, _ = evaluate(bot, cases, threshold=round(t, 2))
-        print(f"{m['threshold']:>6.2f}{m['recall@1']:>10.1%}{m['top3']:>10.1%}"
-              f"{m['unmatched_rate']:>10.1%}{m['wrong_rate']:>10.1%}"
-              f"{m['false_trigger_rate']:>10.1%}")
+        print(
+            f"{m['threshold']:>6.2f}{m['recall@1']:>10.1%}{m['top3']:>10.1%}"
+            f"{m['unmatched_rate']:>10.1%}{m['wrong_rate']:>10.1%}"
+            f"{m['false_trigger_rate']:>10.1%}"
+        )
         # 选点策略：误答率 ≤5% 且误触发率 ≤20% 的前提下，
         # 取召回率@1 最高的平台；同一平台上取更保守（更高）的阈值，
         # 避免选到 0.05 这种对真实噪声毫无抵抗力的值。
         if m["wrong_rate"] <= 0.05 and m["false_trigger_rate"] <= 0.20:
-            if best is None or m["recall@1"] > best["recall@1"] or (
-                m["recall@1"] == best["recall@1"] and m["threshold"] > best["threshold"]
+            if (
+                best is None
+                or m["recall@1"] > best["recall@1"]
+                or (m["recall@1"] == best["recall@1"] and m["threshold"] > best["threshold"])
             ):
                 best = m
         t += 0.05
 
     print("-" * 74)
     if best:
-        print(f"推荐阈值：{best['threshold']:.2f}  "
-              f"（召回率@1 = {best['recall@1']:.1%}，误答率 = {best['wrong_rate']:.1%}，"
-              f"误触发率 = {best['false_trigger_rate']:.1%}）")
+        print(
+            f"推荐阈值：{best['threshold']:.2f}  "
+            f"（召回率@1 = {best['recall@1']:.1%}，误答率 = {best['wrong_rate']:.1%}，"
+            f"误触发率 = {best['false_trigger_rate']:.1%}）"
+        )
         print(f"把 src/config.py 里的 SIMILARITY_THRESHOLD 改成 {best['threshold']:.2f} 即可生效。")
     else:
         print("没有阈值同时满足『误答率 ≤5% 且误触发率 ≤20%』。")
@@ -166,22 +173,28 @@ def main() -> None:
     parser.add_argument("--scan", action="store_true", help="扫描阈值找最优点")
     parser.add_argument("--show-error", action="store_true", help="打印答错的样本")
     parser.add_argument("--threshold", type=float, help="临时指定阈值，不改动配置文件")
-    parser.add_argument("--backend", choices=["tfidf", "bert", "bge"],
-                        help="临时指定向量化方案，覆盖 config.VECTORIZER_TYPE")
-    parser.add_argument("--min-recall", type=float, default=None,
-                        help="回归门禁：召回率@1 低于该值即非零退出（CI 用，如 0.95）")
+    parser.add_argument(
+        "--backend", choices=["tfidf", "bert", "bge"], help="临时指定向量化方案，覆盖 config.VECTORIZER_TYPE"
+    )
+    parser.add_argument(
+        "--min-recall", type=float, default=None, help="回归门禁：召回率@1 低于该值即非零退出（CI 用，如 0.95）"
+    )
     args = parser.parse_args()
 
     bot = FaqBot(vectorizer_type=args.backend)
     cases = load_test_set()
 
     s = bot.stats()
-    print(f"索引：{s['intents']} 个意图 / {s['questions']} 条问法"
-          f"   向量化：{s['vectorizer']}   构建耗时 {s['build_ms']:.1f} ms")
+    print(
+        f"索引：{s['intents']} 个意图 / {s['questions']} 条问法"
+        f"   向量化：{s['vectorizer']}   构建耗时 {s['build_ms']:.1f} ms"
+    )
 
     if config.ENABLE_RERANK:
-        print("\n!! ENABLE_RERANK=True：命中判定走 RERANK_THRESHOLD（精排分），"
-              "--threshold / --scan 调的是余弦阈值，对结果没有影响。")
+        print(
+            "\n!! ENABLE_RERANK=True：命中判定走 RERANK_THRESHOLD（精排分），"
+            "--threshold / --scan 调的是余弦阈值，对结果没有影响。"
+        )
         print("   标定精排阈值：临时改 config.RERANK_THRESHOLD 后重跑本脚本。\n")
 
     if args.scan:
@@ -220,8 +233,10 @@ def main() -> None:
         got = metrics["recall@1"]
         if got < args.min_recall:
             hit = round(got * metrics["answerable"])
-            print(f"!! 效果回归：召回率@1 {got:.1%} < 基线 {args.min_recall:.1%}"
-                  f"（{hit}/{metrics['answerable']} 条可答样本命中）")
+            print(
+                f"!! 效果回归：召回率@1 {got:.1%} < 基线 {args.min_recall:.1%}"
+                f"（{hit}/{metrics['answerable']} 条可答样本命中）"
+            )
             print("   用 --show-error 看是哪些意图掉了，再决定补问法还是回滚改动。")
             sys.exit(1)
         print(f"OK 效果门禁：召回率@1 {got:.1%} ≥ 基线 {args.min_recall:.1%}")

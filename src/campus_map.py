@@ -25,12 +25,14 @@
     - pois 的 (x, y) 是「相对图片」的百分比：x:0=左 100=右；y:0=上 100=下。
       请按手绘图上的位置填写，不需要任何真实经纬度。
 """
+
 from __future__ import annotations
 
 import base64
 from pathlib import Path
 
 import streamlit as st
+
 # 显式 import 模块再调用，而非 `st.components.v1.html(...)` 穿透式取属性——
 # 后者是官方文档标注的 deprecated 写法（1.51.0 尚不告警，但注明后续会禁用）。
 import streamlit.components.v1 as components
@@ -42,8 +44,8 @@ _ASSET_DIR = Path(__file__).resolve().parent.parent / "assets" / "campus_maps"
 CAMPUSES: dict[str, dict] = {
     "天堂校区": {
         "image": "campus_tiantang.jpg",
-        "center": (32.072, 118.764),   # ⚠️ 估算：南京工业职业技术大学天堂校区附近，请校准
-        "span_lat": 0.006,             # 图片覆盖约 ±0.006° 纬度 ≈ 1.3km
+        "center": (32.072, 118.764),  # ⚠️ 估算：南京工业职业技术大学天堂校区附近，请校准
+        "span_lat": 0.006,  # 图片覆盖约 ±0.006° 纬度 ≈ 1.3km
         "pois": [
             # 数据来源：天堂校区 手绘图坐标（原点=图片左上角，坐标=标签文字中心像素点，按 1468x960 换算百分比；x:0=左100=右, y:0=上100=下）
             {"name": "东门", "x": 13.6, "y": 22.9, "desc": "校门"},
@@ -64,12 +66,11 @@ CAMPUSES: dict[str, dict] = {
             {"name": "校训石", "x": 30.0, "y": 39.6, "desc": "景观石刻"},
             {"name": "炎培园", "x": 35.4, "y": 68.8, "desc": "园林景观"},
             {"name": "颐礼台", "x": 45.6, "y": 13.5, "desc": "广场平台"},
-
-        ]
+        ],
     },
     "仙林校区": {
         "image": "campus_xianlin.jpg",
-        "center": (32.115, 118.918),   # ⚠️ 估算：南京工业职业技术大学仙林校区附近，请校准
+        "center": (32.115, 118.918),  # ⚠️ 估算：南京工业职业技术大学仙林校区附近，请校准
         "span_lat": 0.006,
         "pois": [
             # 数据来源：仙林校区 手绘图坐标（原点=图片左上角，坐标=标签文字中心像素点，按 1358x960 换算百分比；x:0=左100=右, y:0=上100=下）
@@ -121,8 +122,7 @@ CAMPUSES: dict[str, dict] = {
             {"name": "航空实训基地", "x": 50.1, "y": 27.1, "desc": "航空实训场地"},
             {"name": "城市轨道室外综合实训基地", "x": 50.1, "y": 16.7, "desc": "轨道实训场地"},
             {"name": "青春舞台", "x": 30.2, "y": 43.8, "desc": "户外舞台"},
-
-        ]
+        ],
     },
 }
 

@@ -12,6 +12,7 @@
     3. **不写死深色** —— 所有颜色按浅色调（.streamlit/config.toml 锁 base = "light"）。
        要支持深色主题，得把这些硬编码色换成 CSS 变量，别直接改 base。
 """
+
 from __future__ import annotations
 
 import streamlit as st
@@ -40,6 +41,7 @@ def sel(pseudo: str = "") -> str:
        正文被挤成一个字一行的竖排（加上 8px padding 正好 16px 宽）。
     """
     return ",\n".join(b + pseudo for b in _BOXES)
+
 
 CSS = f"""
 <style>

@@ -18,6 +18,7 @@
     - 不依赖 LLM 做判断（防止"用魔法打败魔法"的循环）
     - 不去检测 LLM 回答里的注入（一旦 LLM 被劫持，防不住，要靠日志告警）
 """
+
 from __future__ import annotations
 
 import re
@@ -32,7 +33,7 @@ from typing import List, Optional
 #   原文 / 全折叠 / 保留结构符折叠
 # 2026-09 修复：全折叠会把 <>[]() 一并删掉，"<| im_start |>"、
 # "[ I N S T ]" 这类插空格的控制符在原文（有空格）和全折叠
-#（结构符没了）两个变体上都匹配不上。保留结构符的变体专治这种绕过。
+# （结构符没了）两个变体上都匹配不上。保留结构符的变体专治这种绕过。
 _ZERO_WIDTH_RE = re.compile(r"[​-‏‪-‮﻿]")
 _FOLD_RE = re.compile(r"[\s\-_.,·`'\"!！?？。，、；：:（）()\[\]{}<>「」『』]+")
 # 注意下划线也要保留：im_start / end_of_text 等控制符自带 _，
@@ -65,47 +66,60 @@ def _normalize(text: str, keep_struct: bool = False) -> str:
 
 _PATTERNS: List[tuple] = [
     # ----- 高风险：直接拒答 -----
-    ("ignore_previous", re.compile(
-        r"(?i)(?:忽略|无视|忘掉|丢弃|disregard|ignore|forget|override)"
-        r"\s*(?:以上|之前|以前|先前|前面|上面|all|previous|prior|above|earlier)"
-        r"[\s\S]{0,40}(?:指令|命令|说明|提示|要求|设定|规矩|规则|约束"
-        r"|instruction|prompt|directive|rule|context)"
-    ), "high"),
-
-    ("role_hijack", re.compile(
-        r"(?i)(?:你现在是|从现在起你是|from now on you are|please act as|"
-        r"you are now|pretend to be|扮演|你是)"
-        r"[\s\S]{0,40}"
-        r"(?:没有限制|无限制|dan|jailbreak|"
-        r"without\s+(?:any\s+)?(?:restriction|limit|filter|censorship|rule))"
-    ), "high"),
-
-    ("system_prompt_leak", re.compile(
-        r"(?i)(?:把系统提示|输出系统提示|打印.*?(?:prompt|提示词)"
-        r"|show.*?system.*?prompt|reveal.*?prompt|泄露.*?提示词"
-        r"|把你的(?:system|系统).*?(?:给我|发我)"
-        r"|(?:复述|重复|翻译).{0,12}(?:上面|之前|以上|前面)"
-        r".{0,12}(?:内容|指令|设定|提示|prompt)"
-        r"|(?:复述|重复).{0,12}(?:系统提示|系统设定|system\s*prompt|提示词))"
-    ), "high"),
-
+    (
+        "ignore_previous",
+        re.compile(
+            r"(?i)(?:忽略|无视|忘掉|丢弃|disregard|ignore|forget|override)"
+            r"\s*(?:以上|之前|以前|先前|前面|上面|all|previous|prior|above|earlier)"
+            r"[\s\S]{0,40}(?:指令|命令|说明|提示|要求|设定|规矩|规则|约束"
+            r"|instruction|prompt|directive|rule|context)"
+        ),
+        "high",
+    ),
+    (
+        "role_hijack",
+        re.compile(
+            r"(?i)(?:你现在是|从现在起你是|from now on you are|please act as|"
+            r"you are now|pretend to be|扮演|你是)"
+            r"[\s\S]{0,40}"
+            r"(?:没有限制|无限制|dan|jailbreak|"
+            r"without\s+(?:any\s+)?(?:restriction|limit|filter|censorship|rule))"
+        ),
+        "high",
+    ),
+    (
+        "system_prompt_leak",
+        re.compile(
+            r"(?i)(?:把系统提示|输出系统提示|打印.*?(?:prompt|提示词)"
+            r"|show.*?system.*?prompt|reveal.*?prompt|泄露.*?提示词"
+            r"|把你的(?:system|系统).*?(?:给我|发我)"
+            r"|(?:复述|重复|翻译).{0,12}(?:上面|之前|以上|前面)"
+            r".{0,12}(?:内容|指令|设定|提示|prompt)"
+            r"|(?:复述|重复).{0,12}(?:系统提示|系统设定|system\s*prompt|提示词))"
+        ),
+        "high",
+    ),
     # 模型控制符（ChatML / Llama / Alpaca 等协议）
-    ("instruction_marker", re.compile(
-        r"<\|/?(?:system|im_start|im_end|endoftext|pad)\|>"
-        r"|\[INST\]|\[/INST\]"
-        r"|<<SYS>>|<</SYS>>"
-    ), "high"),
-
+    (
+        "instruction_marker",
+        re.compile(
+            r"<\|/?(?:system|im_start|im_end|endoftext|pad)\|>"
+            r"|\[INST\]|\[/INST\]"
+            r"|<<SYS>>|<</SYS>>"
+        ),
+        "high",
+    ),
     # ----- 中风险：标记后仍走 LLM -----
-    ("jailbreak_keyword", re.compile(
-        r"(?i)\b(?:DAN|jailbreak|do anything now|越狱模式|突破限制)\b"
-    ), "medium"),
-
-    ("developer_mode", re.compile(
-        # 必须有"开启/进入"等触发动词，避免"什么是 developer mode"误伤
-        r"(?i)(?:启用|开启|进入|进到|进|开|打开|激活|switch\s+to|enter)"
-        r"\s*(?:开发者模式|developer\s+mode|debug\s+mode|调试模式)"
-    ), "medium"),
+    ("jailbreak_keyword", re.compile(r"(?i)\b(?:DAN|jailbreak|do anything now|越狱模式|突破限制)\b"), "medium"),
+    (
+        "developer_mode",
+        re.compile(
+            # 必须有"开启/进入"等触发动词，避免"什么是 developer mode"误伤
+            r"(?i)(?:启用|开启|进入|进到|进|开|打开|激活|switch\s+to|enter)"
+            r"\s*(?:开发者模式|developer\s+mode|debug\s+mode|调试模式)"
+        ),
+        "medium",
+    ),
 ]
 
 
@@ -119,6 +133,7 @@ class InjectionVerdict:
         rules:   命中的规则名列表
         reason:  人类可读的拦截原因（仅 safe=False 时有）
     """
+
     safe: bool = True
     level: str = ""
     rules: List[str] = field(default_factory=list)

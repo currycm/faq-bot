@@ -24,6 +24,7 @@
 
 运行时间：~30s（BGE 启动 + 索引构建，所有用例共享一个 TestClient）
 """
+
 from __future__ import annotations
 
 import sys
@@ -152,7 +153,8 @@ class TestAskBasic:
 
     def test_user_id_透传(self, client):
         r = client.post(
-            "/ask", json={"query": "图书馆几点开门", "user_id": "u_test_001"},
+            "/ask",
+            json={"query": "图书馆几点开门", "user_id": "u_test_001"},
         )
         assert r.status_code == 200
         # user_id 不会出现在响应里，但 ask 内部已记日志

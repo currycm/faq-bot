@@ -8,6 +8,7 @@
 
 这组测试就是钉死这个行为：只要有人再把 _FILE 分支弄丢，红灯立刻亮。
 """
+
 from __future__ import annotations
 
 import os

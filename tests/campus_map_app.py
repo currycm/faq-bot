@@ -3,6 +3,7 @@
 
 不加载 FaqBot / BGE，因此运行快、不依赖网络，专门用于验证地图叠加与 POI 渲染。
 """
+
 import sys
 from pathlib import Path
 

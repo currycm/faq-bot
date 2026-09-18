@@ -12,6 +12,7 @@
     那测的是「拒绝一个请求有多快」，不是系统吞吐。这一点已经坑过一次，
     详见 README「三个必须说清楚的点」。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,8 +56,7 @@ def main() -> None:
 
     def one(i: int) -> None:
         # 独立身份：不然会被限流桶挡掉，测到的是"拒绝速度"而非吞吐
-        bot.ask(pool[i], user_id=f"tp-{i}",
-                client_ip=f"10.{100 + i // 65536}.{(i // 256) % 256}.{i % 256 + 1}")
+        bot.ask(pool[i], user_id=f"tp-{i}", client_ip=f"10.{100 + i // 65536}.{(i // 256) % 256}.{i % 256 + 1}")
         with lock:
             done["n"] += 1
 

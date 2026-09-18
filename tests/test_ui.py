@@ -12,6 +12,7 @@ AppTest 会真实执行一遍 app.py 的渲染逻辑，能抓到：
 !! 需要后端在跑：docker compose up -d（或 uvicorn api:app --port 8000）
    后端不可用时整组测试自动 skip（而不是误报失败）。
 """
+
 from __future__ import annotations
 
 import re
@@ -151,13 +152,13 @@ def test_theme_injected():
 
     css = styles[0]
     for key in (
-        "stHeader",           # 去顶部彩虹条
-        "stFooter",           # 去 Made with Streamlit
-        "st-key-qa_ask_",     # 提问气泡（靠右）
+        "stHeader",  # 去顶部彩虹条
+        "stFooter",  # 去 Made with Streamlit
+        "st-key-qa_ask_",  # 提问气泡（靠右）
         "st-key-qa_answer_",  # 回答气泡（靠左）
         "st-key-qa_history",  # 对话区整体滚动容器
         "stSidebarCollapseButton",  # 去左上角收起栏
-        "st-key-sugbar",      # 高频问题 chip 条
+        "st-key-sugbar",  # 高频问题 chip 条
     ):
         assert key in css, f"CSS 里缺少针对 {key} 的覆盖规则"
 
@@ -251,11 +252,7 @@ def test_suggestions_above_input():
     # 只看真正的代码行：注释和 def 行里也会出现这些名字
     def _code_line(needle: str):
         return next(
-            (
-                i
-                for i, l in enumerate(src)
-                if needle in l and not l.strip().startswith(("#", "def", '"', "见"))
-            ),
+            (i for i, l in enumerate(src) if needle in l and not l.strip().startswith(("#", "def", '"', "见"))),
             None,
         )
 
@@ -277,9 +274,7 @@ def test_suggestions_above_input():
     key = m.group(1)
     from src import ui_style
 
-    assert f".st-key-{key}" in ui_style.CSS, (
-        f"ui_style.py 里缺少 .st-key-{key} 的样式规则"
-    )
+    assert f".st-key-{key}" in ui_style.CSS, f"ui_style.py 里缺少 .st-key-{key} 的样式规则"
 
     print(f"  推荐区位置正确（第 {sug_line + 1} 行 > 输入栏第 {chat_line + 1} 行），key={key}")
 
@@ -292,9 +287,7 @@ def test_single_scroll_layer_and_no_collapse():
     """
     from src import ui_style
 
-    assert ui_style._BOXES == ('[class*="st-key-qa_history"]',), (
-        "可滚动容器应只剩对话区一个，实际：" f"{ui_style._BOXES}"
-    )
+    assert ui_style._BOXES == ('[class*="st-key-qa_history"]',), f"可滚动容器应只剩对话区一个，实际：{ui_style._BOXES}"
 
     src = (ROOT / "app.py").read_text(encoding="utf-8")
     for label in ('st.expander("提问"', 'st.expander("回答"'):

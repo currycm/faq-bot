@@ -12,6 +12,7 @@
 或生产：
     gunicorn api:app -w 2 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
 """
+
 from __future__ import annotations
 
 import os
@@ -52,12 +53,14 @@ def _load_bot() -> FaqBot:
     print(f"[bot] 进程 {__pid} 加载 FaqBot…")
     t0 = time.perf_counter()
     b = FaqBot()
-    b.ask("图书馆几点开门")        # 预热：触发 BGE 懒加载 + 首次索引访问
+    b.ask("图书馆几点开门")  # 预热：触发 BGE 懒加载 + 首次索引访问
     s = b.stats()
     bot = b
     ready = True
-    print(f"[bot] ready: intents={s['intents']} vectorizer={s['vectorizer']} "
-          f"init={(time.perf_counter() - t0) * 1000:.0f}ms")
+    print(
+        f"[bot] ready: intents={s['intents']} vectorizer={s['vectorizer']} "
+        f"init={(time.perf_counter() - t0) * 1000:.0f}ms"
+    )
     return b
 
 
@@ -127,7 +130,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
-    allow_methods=["GET","POST"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -137,12 +140,15 @@ app.add_middleware(
 async def unhandled_exception(request: Request, exc: Exception):
     """兜底异常处理器：所有未捕获异常都返回 500 + trace_id，绝不裸抛。"""
     trace_id = request.headers.get("X-Trace-Id", str(uuid.uuid4()))
-    logger.write_jsonl(config.LOG_PATH, {
-        "event": "api_500",
-        "trace_id": trace_id,
-        "path": str(request.url),
-        "error": f"{type(exc).__name__}: {exc}",
-    })
+    logger.write_jsonl(
+        config.LOG_PATH,
+        {
+            "event": "api_500",
+            "trace_id": trace_id,
+            "path": str(request.url),
+            "error": f"{type(exc).__name__}: {exc}",
+        },
+    )
     return JSONResponse(
         status_code=500,
         content={"detail": "服务暂时不可用，请稍后重试", "trace_id": trace_id},
@@ -209,13 +215,16 @@ def ask(req: AskRequest, request: Request):
             client_ip=client_ip,
         )
     except Exception as exc:
-        logger.write_jsonl(config.LOG_PATH, {
-            "event": "ask_exception",
-            "trace_id": trace_id,
-            "user_id": req.user_id,
-            "query": req.query[:200],
-            "error": f"{type(exc).__name__}: {exc}",
-        })
+        logger.write_jsonl(
+            config.LOG_PATH,
+            {
+                "event": "ask_exception",
+                "trace_id": trace_id,
+                "user_id": req.user_id,
+                "query": req.query[:200],
+                "error": f"{type(exc).__name__}: {exc}",
+            },
+        )
         raise HTTPException(500, "问答失败，请稍后重试") from exc
 
     # 把总耗时（含 HTTP 开销）覆盖到 latency_ms
@@ -239,6 +248,7 @@ def ask(req: AskRequest, request: Request):
 # ------------------------------------------------------------------ 入口
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("api:app", host="127.0.0.1", port=8000, reload=False)
 
 

@@ -11,6 +11,7 @@
     - HEFENG_ENABLED=True 但 API_KEY 为空 → 降级到 fixed 兜底
     - 你可以临时把 KEY 写到环境变量，再单独跑真实联调
 """
+
 from __future__ import annotations
 
 import sys
@@ -32,41 +33,37 @@ for _stream in (sys.stdout, sys.stderr):
 _OK = "[OK] "
 _FAIL = "[FAIL] "
 
-from src import config                                  # noqa: E402
-from src.fallback import dispatch, QueryType            # noqa: E402
+from src import config  # noqa: E402
+from src.fallback import dispatch, QueryType  # noqa: E402
 
 
 # ---------------------------------------------------------------- 路由分类
 CLASSIFY_CASES = [
     # (query, 期望类型, 说明)
-    ("你好",                       QueryType.CHAT,      "打招呼"),
-    ("谢谢",                       QueryType.CHAT,      "感谢"),
-    ("你是谁",                     QueryType.CHAT,      "问身份"),
-
-    ("今天南京天气怎么样",         QueryType.REALTIME,  "天气 - 主关键词"),
-    ("明天会下雨吗",               QueryType.REALTIME,  "天气 - 动词型"),
-    ("今天几度",                   QueryType.REALTIME,  "天气 - 温度"),
-    ("什么时候开学",               QueryType.REALTIME,  "校历 - 关键词在 REALTIME 中"),
-
-    ("大四还能转专业吗",           QueryType.CAMPUS,    "校园事务 - 转专业"),
-    ("校园卡丢了",                 QueryType.CAMPUS,    "校园事务 - 校园卡"),
-    ("奖学金怎么申请",             QueryType.CAMPUS,    "校园事务 - 奖学金"),
-    ("宿舍晚上几点熄灯",           QueryType.CAMPUS,    "校园事务 - 宿舍"),
-    ("借书超期罚款",               QueryType.CAMPUS,    "校园事务 - 图书馆"),
-
-    ("什么是机器学习",             QueryType.GENERAL,   "通识 - 概念"),
-    ("怎么学好高数",               QueryType.GENERAL,   "通识 - 方法"),
-    ("python 怎么读文件",          QueryType.GENERAL,   "通识 - 技术"),
-
+    ("你好", QueryType.CHAT, "打招呼"),
+    ("谢谢", QueryType.CHAT, "感谢"),
+    ("你是谁", QueryType.CHAT, "问身份"),
+    ("今天南京天气怎么样", QueryType.REALTIME, "天气 - 主关键词"),
+    ("明天会下雨吗", QueryType.REALTIME, "天气 - 动词型"),
+    ("今天几度", QueryType.REALTIME, "天气 - 温度"),
+    ("什么时候开学", QueryType.REALTIME, "校历 - 关键词在 REALTIME 中"),
+    ("大四还能转专业吗", QueryType.CAMPUS, "校园事务 - 转专业"),
+    ("校园卡丢了", QueryType.CAMPUS, "校园事务 - 校园卡"),
+    ("奖学金怎么申请", QueryType.CAMPUS, "校园事务 - 奖学金"),
+    ("宿舍晚上几点熄灯", QueryType.CAMPUS, "校园事务 - 宿舍"),
+    ("借书超期罚款", QueryType.CAMPUS, "校园事务 - 图书馆"),
+    ("什么是机器学习", QueryType.GENERAL, "通识 - 概念"),
+    ("怎么学好高数", QueryType.GENERAL, "通识 - 方法"),
+    ("python 怎么读文件", QueryType.GENERAL, "通识 - 技术"),
     # ---- 回归用例（2026-09 修复）：英文关键词词边界 / 单字校园词 / 闲聊优先级 ----
-    ("this is a question",        QueryType.GENERAL,   "hi 不得命中 this"),
-    ("which 图书馆几点开门",       QueryType.CAMPUS,    "hi 不得命中 which"),
-    ("history of china",          QueryType.GENERAL,   "hi 不得命中 history"),
-    ("关系数据库是什么",           QueryType.GENERAL,   "单字'系'不得命中校务"),
-    ("系统论是什么",               QueryType.GENERAL,   "单字'系'不得命中校务"),
-    ("专业英语怎么学",             QueryType.GENERAL,   "'专业'不得误伤专业英语"),
-    ("你好，请问怎么选课",         QueryType.CAMPUS,    "校务优先于闲聊"),
-    ("谢谢，宿舍几点熄灯",         QueryType.CAMPUS,    "校务优先于闲聊"),
+    ("this is a question", QueryType.GENERAL, "hi 不得命中 this"),
+    ("which 图书馆几点开门", QueryType.CAMPUS, "hi 不得命中 which"),
+    ("history of china", QueryType.GENERAL, "hi 不得命中 history"),
+    ("关系数据库是什么", QueryType.GENERAL, "单字'系'不得命中校务"),
+    ("系统论是什么", QueryType.GENERAL, "单字'系'不得命中校务"),
+    ("专业英语怎么学", QueryType.GENERAL, "'专业'不得误伤专业英语"),
+    ("你好，请问怎么选课", QueryType.CAMPUS, "校务优先于闲聊"),
+    ("谢谢，宿舍几点熄灯", QueryType.CAMPUS, "校务优先于闲聊"),
 ]
 
 
@@ -89,10 +86,8 @@ def test_classify():
         if not ok:
             failed.append((q, expected, d.query_type))
 
-    assert not failed, (
-        f"❌ {len(failed)} 个分类失败："
-        + "; ".join(f"{q!r} 期望={exp.value} 实际={got.value}"
-                    for q, exp, got in failed)
+    assert not failed, f"❌ {len(failed)} 个分类失败：" + "; ".join(
+        f"{q!r} 期望={exp.value} 实际={got.value}" for q, exp, got in failed
     )
     print(f"\n✅ 全部 {len(CLASSIFY_CASES)} 条分类通过\n")
 
@@ -100,28 +95,23 @@ def test_classify():
 # ---------------------------------------------------------------- 答案生成（含降级）
 ANSWER_CASES = [
     # (query, 必须出现的子串, 必须不出现的子串, 说明)
-    ("你好呀",
-     ["南京工业职业技术大学"],
-     [],
-     "闲聊应给固定话术"),
-
-    ("今天天气如何",
-     [],
-     ["幻觉", "随机"],                # 没 key 时会显示"暂时拿不到"
-     "实时问题：天气降级路径"),
-
-    ("大四还能转专业吗",
-     ["相关部门", "知识库"],
-     ["DeepSeek"],
-     "校园事务绝不能进 LLM"),
-
-    ("什么是机器学习",
-     [],
-     # 兜底话术只许说"我答不上"，不许解释原因 ——
-     # "API key 没配""网络问题""预算用完""让管理员补语料"都是运维信息，
-     # 说给用户听只会让人以为整个服务坏了。
-     ["API key", "key 没配置", "网络问题", "预算额度", "管理员", "未配置"],
-     "通识问题：LLM 降级也不透技术细节"),
+    ("你好呀", ["南京工业职业技术大学"], [], "闲聊应给固定话术"),
+    (
+        "今天天气如何",
+        [],
+        ["幻觉", "随机"],  # 没 key 时会显示"暂时拿不到"
+        "实时问题：天气降级路径",
+    ),
+    ("大四还能转专业吗", ["相关部门", "知识库"], ["DeepSeek"], "校园事务绝不能进 LLM"),
+    (
+        "什么是机器学习",
+        [],
+        # 兜底话术只许说"我答不上"，不许解释原因 ——
+        # "API key 没配""网络问题""预算用完""让管理员补语料"都是运维信息，
+        # 说给用户听只会让人以为整个服务坏了。
+        ["API key", "key 没配置", "网络问题", "预算额度", "管理员", "未配置"],
+        "通识问题：LLM 降级也不透技术细节",
+    ),
 ]
 
 
@@ -163,8 +153,7 @@ def test_empty():
         d = dispatch(q) if q is not None else dispatch("")
         ok = "请输入" in d.answer or d.query_type is QueryType.UNKNOWN
         flag = "✓" if ok else "✗"
-        print(f"  {flag} 输入={q!r:10s} → type={d.query_type.value}, "
-              f"answer={d.answer!r}")
+        print(f"  {flag} 输入={q!r:10s} → type={d.query_type.value}, answer={d.answer!r}")
         assert ok, f"空输入处理异常：{q!r} → {d!r}"
 
     print("\n✅ 空输入处理正常\n")
@@ -178,12 +167,12 @@ def test_end_to_end():
     print("=" * 60)
 
     from src.agent import FaqBot
+
     bot = FaqBot()
 
     # 1. 命中 FAQ
     r1 = bot.ask("图书馆几点开门")
-    print(f"  [命中] tag={r1['tag']!r} score={r1['score']:.3f} "
-          f"fallback={r1['fallback']}")
+    print(f"  [命中] tag={r1['tag']!r} score={r1['score']:.3f} fallback={r1['fallback']}")
     assert r1["matched"], "FAQ 应命中"
 
     # 2. 天气 → 路由到 weather
@@ -204,10 +193,8 @@ def test_end_to_end():
     assert "DeepSeek 生成" not in r3["answer"]
     if not r3["matched"]:
         # 走路由器兜底，必须是 campus_only 类型
-        assert r3["fallback"]["type"] == "campus_only", \
-            f"校园事务应路由到 campus_only: {r3['fallback']}"
-        assert r3["fallback"]["source"].startswith("fixed_campus"), \
-            f"校园事务应走 fixed_campus: {r3['fallback']}"
+        assert r3["fallback"]["type"] == "campus_only", f"校园事务应路由到 campus_only: {r3['fallback']}"
+        assert r3["fallback"]["source"].startswith("fixed_campus"), f"校园事务应走 fixed_campus: {r3['fallback']}"
 
     # 4. 通识 → LLM（无 key 时降级）
     r4 = bot.ask("如何提高英语口语")
@@ -233,10 +220,10 @@ if __name__ == "__main__":
     config.HEFENG_ENABLED = True
 
     results = []
-    results.append(("classify",      test_classify()))
-    results.append(("safety",        test_answers_safety()))
-    results.append(("empty",         test_empty()))
-    results.append(("end_to_end",    test_end_to_end()))
+    results.append(("classify", test_classify()))
+    results.append(("safety", test_answers_safety()))
+    results.append(("empty", test_empty()))
+    results.append(("end_to_end", test_end_to_end()))
 
     print("=" * 60)
     print("汇总")

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """W2 限流 / 预算熔断单元测试"""
+
 from __future__ import annotations
 
 import time
@@ -7,7 +8,11 @@ import time
 
 from src.security.rate_limit import RateLimiter, check_rate_limit, reset_all
 from src.security.budget import (
-    BudgetGuard, get_budget, check_budget, record_llm_call, reset_budget,
+    BudgetGuard,
+    get_budget,
+    check_budget,
+    record_llm_call,
+    reset_budget,
 )
 
 
@@ -46,7 +51,7 @@ class TestRateLimiter:
         否则"身份识别不到"的请求（无 XFF、无 client）等于完全不受限。
         """
         rl = RateLimiter(capacity=1, refill_rate=0.001)
-        assert rl.allow("")      # 第一次过
+        assert rl.allow("")  # 第一次过
         assert not rl.allow(None)  # 同一个共享桶，容量 1 → 拒
         assert not rl.allow("")  # 依旧拒
 
@@ -126,8 +131,7 @@ class TestBudgetGuard:
 
     def test_cost_limit(self):
         # max_cost=0.05, avg_cost=0.02 → 累计 3 次后估算 0.06 超 0.05
-        bg = BudgetGuard(window_sec=60, max_calls=1000, max_cost_cny=0.05,
-                        avg_cost_per_call=0.02)
+        bg = BudgetGuard(window_sec=60, max_calls=1000, max_cost_cny=0.05, avg_cost_per_call=0.02)
         for _ in range(2):
             ok, _ = bg.check()
             assert ok
@@ -172,8 +176,7 @@ class TestBudgetGuard:
         （与 check 的 total + cost 口径一致）。
         """
         # max_cost=0.05、avg_cost=0.02：记 3 次累计 0.06，已超上限
-        bg = BudgetGuard(window_sec=60, max_calls=1000, max_cost_cny=0.05,
-                        avg_cost_per_call=0.02, name="t")
+        bg = BudgetGuard(window_sec=60, max_calls=1000, max_cost_cny=0.05, avg_cost_per_call=0.02, name="t")
         for _ in range(3):
             bg.record()
         s = bg.stats()
@@ -189,8 +192,7 @@ class TestBudgetGuard:
 
     def test_never_raises(self):
         """即使数据极端也不该抛。"""
-        bg = BudgetGuard(window_sec=60, max_calls=1, max_cost_cny=0.01,
-                        avg_cost_per_call=100.0)
+        bg = BudgetGuard(window_sec=60, max_calls=1, max_cost_cny=0.01, avg_cost_per_call=100.0)
         ok, _ = bg.check()
         assert isinstance(ok, bool)
 

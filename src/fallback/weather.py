@@ -8,6 +8,7 @@
     1. 先调 GeoAPI 把城市名转成 LocationID（如南京 → 101190101）
     2. 再用 LocationID 调 WeatherAPI 拿当前天气
 """
+
 from __future__ import annotations
 
 import gzip
@@ -25,12 +26,26 @@ from .. import config, logger
 # 天况代码 → 描述（和风天气 v7 标准）
 # https://dev.qweather.com/docs/resource/icons/
 _WEATHER_ICONS = {
-    "100": "晴", "101": "多云", "102": "少云", "103": "晴间多云",
-    "104": "阴", "150": "晴",
-    "300": "阵雨", "301": "强阵雨", "302": "雷阵雨", "305": "小雨",
-    "306": "中雨", "307": "大雨", "310": "暴雨",
-    "400": "小雪", "401": "中雪", "402": "大雪", "403": "暴雪",
-    "500": "雾", "501": "薄雾", "502": "霾",
+    "100": "晴",
+    "101": "多云",
+    "102": "少云",
+    "103": "晴间多云",
+    "104": "阴",
+    "150": "晴",
+    "300": "阵雨",
+    "301": "强阵雨",
+    "302": "雷阵雨",
+    "305": "小雨",
+    "306": "中雨",
+    "307": "大雨",
+    "310": "暴雨",
+    "400": "小雪",
+    "401": "中雪",
+    "402": "大雪",
+    "403": "暴雪",
+    "500": "雾",
+    "501": "薄雾",
+    "502": "霾",
 }
 
 
@@ -40,35 +55,63 @@ _WEATHER_ICONS = {
 #    江苏 13 市已全收录，方便本校师生查其他江苏城市天气。
 _CITY_LOCATIONS = {
     # 江苏
-    "南京": "101190101", "无锡": "101190201", "徐州": "101190801",
-    "常州": "101191101", "苏州": "101190401", "南通": "101190501",
-    "连云港": "101191001", "淮安": "101190901", "盐城": "101190701",
-    "扬州": "101190601", "镇江": "101191201", "泰州": "101191301",
+    "南京": "101190101",
+    "无锡": "101190201",
+    "徐州": "101190801",
+    "常州": "101191101",
+    "苏州": "101190401",
+    "南通": "101190501",
+    "连云港": "101191001",
+    "淮安": "101190901",
+    "盐城": "101190701",
+    "扬州": "101190601",
+    "镇江": "101191201",
+    "泰州": "101191301",
     "宿迁": "101191401",
     # 直辖市
-    "北京": "101010100", "上海": "101020100", "天津": "101030100",
+    "北京": "101010100",
+    "上海": "101020100",
+    "天津": "101030100",
     "重庆": "101040100",
     # 省会
-    "广州": "101280101", "深圳": "101280601", "杭州": "101210101",
-    "武汉": "101200101", "成都": "101270101",
-    "西安": "101110101", "济南": "101120101", "青岛": "101120201",
-    "长沙": "101250101", "郑州": "101180101", "合肥": "101220101",
-    "福州": "101230101", "厦门": "101230201", "南昌": "101240101",
-    "昆明": "101290101", "贵阳": "101260101", "南宁": "101300101",
-    "海口": "101310101", "三亚": "101310201", "兰州": "101160101",
-    "西宁": "101150101", "银川": "101170101", "呼和浩特": "101080101",
-    "乌鲁木齐": "101130101", "拉萨": "101140101", "哈尔滨": "101050101",
-    "长春": "101060101", "沈阳": "101070101", "大连": "101070201",
-    "太原": "101100101", "石家庄": "101090101",
+    "广州": "101280101",
+    "深圳": "101280601",
+    "杭州": "101210101",
+    "武汉": "101200101",
+    "成都": "101270101",
+    "西安": "101110101",
+    "济南": "101120101",
+    "青岛": "101120201",
+    "长沙": "101250101",
+    "郑州": "101180101",
+    "合肥": "101220101",
+    "福州": "101230101",
+    "厦门": "101230201",
+    "南昌": "101240101",
+    "昆明": "101290101",
+    "贵阳": "101260101",
+    "南宁": "101300101",
+    "海口": "101310101",
+    "三亚": "101310201",
+    "兰州": "101160101",
+    "西宁": "101150101",
+    "银川": "101170101",
+    "呼和浩特": "101080101",
+    "乌鲁木齐": "101130101",
+    "拉萨": "101140101",
+    "哈尔滨": "101050101",
+    "长春": "101060101",
+    "沈阳": "101070101",
+    "大连": "101070201",
+    "太原": "101100101",
+    "石家庄": "101090101",
 }
 
 # 「天气/气温」前面可能出现的时间词，抽取城市名时要剥掉
 _TIME_WORDS = r"(?:今天|明天|后天|昨天|现在|这周|周末|最近|这几天)"
 
 # 兜底用的地名正则：抓「XX 今天天气怎么样」里的 XX
-_CITY_BEFORE_WEATHER = re.compile(
-    r"([\u4e00-\u9fa5]{2,7}?)" + _TIME_WORDS + r"?的?(?:天气|气温|气候)"
-)
+_CITY_BEFORE_WEATHER = re.compile(r"([\u4e00-\u9fa5]{2,7}?)" + _TIME_WORDS + r"?的?(?:天气|气温|气候)")
 
 # 问句里的口头禅/疑问前缀，抽到地名里要去掉。
 # 2026-09 修复：补齐疑问词（为什么/怎么/如何/哪里/知道），并用循环
@@ -126,7 +169,7 @@ def detect_forecast_day(query: str) -> Optional[str]:
     """
     if not query:
         return None
-    if "后天" in query:          # "明后天" 也命中这里
+    if "后天" in query:  # "明后天" 也命中这里
         return "后天"
     if "明天" in query:
         return "明天"
@@ -154,18 +197,15 @@ class WeatherResult:
 @dataclass
 class ForecastResult:
     city: str
-    day: str          # "明天" / "后天"
-    date: str         # fxDate，形如 2026-09-15
-    weather: str      # 白天天气现象
-    temp_range: str   # "12~18"
+    day: str  # "明天" / "后天"
+    date: str  # fxDate，形如 2026-09-15
+    weather: str  # 白天天气现象
+    temp_range: str  # "12~18"
     wind: str
     raw: dict
 
     def format(self) -> str:
-        return (
-            f"{self.city}{self.day}（{self.date}）：{self.weather}，"
-            f"气温 {self.temp_range}°C，{self.wind}。"
-        )
+        return f"{self.city}{self.day}（{self.date}）：{self.weather}，气温 {self.temp_range}°C，{self.wind}。"
 
 
 def _get_api_key() -> str:
@@ -179,11 +219,11 @@ def _decode_body(data: bytes) -> str:
     urllib 不会自动解压 gzip，直接 .decode() 只会得到一堆乱码，
     进而 json.loads 抛异常 —— 表现就是"配了 key 却一直拿不到天气"。
     """
-    if data[:2] == b"\x1f\x8b":                    # gzip magic number
+    if data[:2] == b"\x1f\x8b":  # gzip magic number
         try:
             data = gzip.decompress(data)
         except OSError:
-            pass                                    # 解压失败就当普通文本处理
+            pass  # 解压失败就当普通文本处理
     return data.decode("utf-8", "replace")
 
 
@@ -191,10 +231,13 @@ def _http_get(url: str, params: dict, timeout: float) -> Optional[dict]:
     """标准库 GET，自动加 key。失败返回 None（调用方负责降级）。"""
     params = {**params, "key": _get_api_key()}
     full = f"{url}?{urllib.parse.urlencode(params)}"
-    req = urllib.request.Request(full, headers={
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip, deflate",
-    })
+    req = urllib.request.Request(
+        full,
+        headers={
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip, deflate",
+        },
+    )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(_decode_body(resp.read()))
@@ -339,9 +382,8 @@ def format_answer(city: Optional[str] = None, day: Optional[str] = None) -> str:
     """
     try:
         r = get_forecast(city, day) if day else get_weather(city)
-    except Exception as exc:                       # 兜底的兜底
-        logger.write_jsonl(config.LOG_PATH,
-                           {"event": "weather_exception", "error": str(exc)})
+    except Exception as exc:  # 兜底的兜底
+        logger.write_jsonl(config.LOG_PATH, {"event": "weather_exception", "error": str(exc)})
         return config.FALLBACK_TEXT
 
     if r is None:

@@ -14,6 +14,7 @@
 为什么校园事务要拦截在 LLM 之前：用户问"大四还能转专业吗"，
 即便 FAQ 没命中，也不能让 LLM 编一个看起来"合理"的答案 —— 这是底线。
 """
+
 from __future__ import annotations
 
 import re
@@ -26,19 +27,19 @@ from . import llm_client, weather
 
 
 class QueryType(str, Enum):
-    CHAT = "chat"             # 闲聊 / 打招呼
-    REALTIME = "realtime"     # 实时查询（天气 / 课表 / 校历）
-    CAMPUS = "campus_only"    # 疑似校园事务但未命中
-    GENERAL = "general"       # 通识问答 → 走 LLM
-    UNKNOWN = "unknown"       # 兜底兜底
+    CHAT = "chat"  # 闲聊 / 打招呼
+    REALTIME = "realtime"  # 实时查询（天气 / 课表 / 校历）
+    CAMPUS = "campus_only"  # 疑似校园事务但未命中
+    GENERAL = "general"  # 通识问答 → 走 LLM
+    UNKNOWN = "unknown"  # 兜底兜底
 
 
 @dataclass
 class RouterDecision:
     query_type: QueryType
     answer: str
-    source: str        # 哪个子模块给的答案（fixed / llm / weather）
-    rule: str          # 命中的规则名，方便调试
+    source: str  # 哪个子模块给的答案（fixed / llm / weather）
+    rule: str  # 命中的规则名，方便调试
 
 
 # ---------------------------------------------------------------- 关键词工具
@@ -100,20 +101,34 @@ def _answer_chat() -> tuple[str, str]:
 
 def _answer_realtime(query: str) -> tuple[str, str]:
     """实时查询：目前只支持天气，其他类型走兜底。"""
-    if _contains_any(query, ["天气", "气温", "下雨", "下雪", "刮风", "几度",
-                              "穿什么", "热不热", "冷不冷", "晴", "阴",
-                              "云", "雾", "霾", "天气预报"]):
+    if _contains_any(
+        query,
+        [
+            "天气",
+            "气温",
+            "下雨",
+            "下雪",
+            "刮风",
+            "几度",
+            "穿什么",
+            "热不热",
+            "冷不冷",
+            "晴",
+            "阴",
+            "云",
+            "雾",
+            "霾",
+            "天气预报",
+        ],
+    ):
         # !! 必须把城市传进去，否则「北京天气」会回答成默认城市（config.HEFENG_CITY）
         # 2026-09 新增：问句带「明天/后天」时走 3d 预报接口——此前预报问题
         # 一律答实况，「明天会下雨吗」回答今天的天气，比接口挂掉更迷惑。
-        ans = weather.format_answer(
-            weather.extract_city(query), day=weather.detect_forecast_day(query)
-        )
+        ans = weather.format_answer(weather.extract_city(query), day=weather.detect_forecast_day(query))
         return ans, "weather"
 
     # 其它实时类（校历日期/课表）暂未接入，TODO
-    text = ("这个问题需要查询实时数据，目前还没接入对应系统。\n"
-            "你可以直接到教务系统或学校官网查询。")
+    text = "这个问题需要查询实时数据，目前还没接入对应系统。\n你可以直接到教务系统或学校官网查询。"
     return text, "fixed_realtime_unsupported"
 
 
@@ -145,15 +160,18 @@ def _answer_general(query: str, sanitized_query: Optional[str] = None) -> tuple[
 
     # 预算熔断：只拦 LLM 通道
     from ..security.budget import check_budget, record_llm_call
+
     ok, reason = check_budget()
     if not ok:
-        logger.write_jsonl(config.LOG_PATH, {
-            "event": "budget_tripped",
-            "query_type": "general",
-            "reason": reason,
-        })
-        return getattr(config, "BUDGET_EXHAUSTED_TEXT", config.FALLBACK_TEXT), \
-            "fixed_budget_exhausted"
+        logger.write_jsonl(
+            config.LOG_PATH,
+            {
+                "event": "budget_tripped",
+                "query_type": "general",
+                "reason": reason,
+            },
+        )
+        return getattr(config, "BUDGET_EXHAUSTED_TEXT", config.FALLBACK_TEXT), "fixed_budget_exhausted"
 
     # 优先用 sanitized_query 喂给 LLM，避免敏感信息进入 prompt
     llm_input = sanitized_query if sanitized_query is not None else query
@@ -205,12 +223,16 @@ def dispatch(query: str, sanitized_query: Optional[str] = None) -> RouterDecisio
     # 不得原样落盘（与 logger 层的密钥脱敏互补）。
     if config.ROUTER_LOG_ENABLED:
         from ..security.redact import redact as _redact
-        logger.write_jsonl(config.LOG_PATH, {
-            "event": "fallback_dispatch",
-            "query": _redact(q).sanitized,
-            "type": qt.value,
-            "source": src,
-            "rule": rule,
-        })
+
+        logger.write_jsonl(
+            config.LOG_PATH,
+            {
+                "event": "fallback_dispatch",
+                "query": _redact(q).sanitized,
+                "type": qt.value,
+                "source": src,
+                "rule": rule,
+            },
+        )
 
     return RouterDecision(query_type=qt, answer=ans, source=src, rule=rule)

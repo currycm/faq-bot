@@ -9,6 +9,7 @@
     python -m src.agent            # 命令行交互
     streamlit run app.py           # 网页
 """
+
 from __future__ import annotations
 
 import json
@@ -25,14 +26,11 @@ from .vectorizer import TfidfVectorizerImpl, build_vectorizer
 
 # ------------------------------------------------------------------ 抗并发
 # 答案缓存：归一化 query → 语料命中结果（只缓存 matched=True，见 src/cache.py）
-_answer_cache = TTLCache(maxsize=config.ANSWER_CACHE_SIZE,
-                         ttl=config.ANSWER_CACHE_TTL)
+_answer_cache = TTLCache(maxsize=config.ANSWER_CACHE_SIZE, ttl=config.ANSWER_CACHE_TTL)
 
 # 慢路径并发闸：兜底链路单次 1.4~8s，不设闸会把线程池占满，
 # 把 ~10ms 的检索请求一起拖垮（实测 27ms → 509ms）。
-_slow_path_gate = threading.BoundedSemaphore(
-    max(1, config.SLOW_PATH_MAX_CONCURRENCY)
-)
+_slow_path_gate = threading.BoundedSemaphore(max(1, config.SLOW_PATH_MAX_CONCURRENCY))
 
 
 def answer_cache_stats() -> dict:
@@ -82,9 +80,15 @@ def _empty_result(query: str) -> dict:
     }
 
 
-def _refusal_result(query: str, sec, latency_ms: float, vectorizer: str,
-                    user_id: str | None, trace_id: str | None,
-                    client_ip: str | None) -> dict:
+def _refusal_result(
+    query: str,
+    sec,
+    latency_ms: float,
+    vectorizer: str,
+    user_id: str | None,
+    trace_id: str | None,
+    client_ip: str | None,
+) -> dict:
     """W2 安全层拒答的返回 —— 冷分支（正常流量里占比极低）。
 
     同样刻意不含 `cache_hit` / `rerank_score`（这段的字段集与主路径本来就不一致，
@@ -101,8 +105,7 @@ def _refusal_result(query: str, sec, latency_ms: float, vectorizer: str,
         "top_guess": None,
         "latency_ms": latency_ms,
         "vectorizer": vectorizer,
-        "fallback": {"type": "security", "source": "fixed",
-                     "rule": sec.reason},
+        "fallback": {"type": "security", "source": "fixed", "rule": sec.reason},
         "security": {
             "reason": sec.reason,
             "pii_hits": sec.pii_hits,
@@ -115,29 +118,38 @@ def _refusal_result(query: str, sec, latency_ms: float, vectorizer: str,
     }
 
 
-def _cache_hit_result(cached: dict, query: str, latency_ms: float,
-                      vectorizer: str, sec, user_id: str | None,
-                      trace_id: str | None, client_ip: str | None) -> dict:
+def _cache_hit_result(
+    cached: dict,
+    query: str,
+    latency_ms: float,
+    vectorizer: str,
+    sec,
+    user_id: str | None,
+    trace_id: str | None,
+    client_ip: str | None,
+) -> dict:
     """答案缓存命中的返回 —— 高频，但构造逻辑独立，抽出来让主路径一眼能读完。
 
     缓存体只存"和业务相关"的字段，每请求字段（query / latency_ms / 身份…）
     在这里补齐。所以本函数与 `_write_cache` 是一对，改一边必须改另一边。
     """
     result = dict(cached)
-    result.update({
-        "query": query,
-        "cache_hit": True,
-        "latency_ms": latency_ms,
-        "vectorizer": vectorizer,
-        "security": {
-            "reason": "",
-            "pii_hits": list(sec.pii_hits),
-            "injection_rules": list(sec.injection_rules),
-        },
-        "user_id": user_id,
-        "trace_id": trace_id,
-        "client_ip": client_ip,
-    })
+    result.update(
+        {
+            "query": query,
+            "cache_hit": True,
+            "latency_ms": latency_ms,
+            "vectorizer": vectorizer,
+            "security": {
+                "reason": "",
+                "pii_hits": list(sec.pii_hits),
+                "injection_rules": list(sec.injection_rules),
+            },
+            "user_id": user_id,
+            "trace_id": trace_id,
+            "client_ip": client_ip,
+        }
+    )
     return result
 
 
@@ -188,11 +200,7 @@ def flatten(intents: list[dict]) -> list[dict]:
     检索是在"问法"粒度上做的：一个意图挂 5 条问法，
     就等于索引里有 5 条指向同一答案的候选，命中概率大幅提升。
     """
-    return [
-        {"question": q, "answer": it["answer"], "tag": it["tag"]}
-        for it in intents
-        for q in it["questions"]
-    ]
+    return [{"question": q, "answer": it["answer"], "tag": it["tag"]} for it in intents for q in it["questions"]]
 
 
 # ------------------------------------------------------------------ 兜底说明
@@ -230,23 +238,21 @@ class FaqBot:
         # !! 关键：预处理函数必须按向量化器类型切换。
         #   - TF-IDF：fit 必须用切词后的字符串，否则词表与查询不一致
         #   - BGE/BERT：模型自带 tokenizer，外层切词反而破坏完整语义
-        self.text_fn = (
-            preprocess.cut
-            if isinstance(self.vectorizer, TfidfVectorizerImpl)
-            else preprocess.normalize
-        )
+        self.text_fn = preprocess.cut if isinstance(self.vectorizer, TfidfVectorizerImpl) else preprocess.normalize
         self.vectorizer.fit([self.text_fn(r["question"]) for r in self.records])
-        self.retriever = Retriever(
-            self.vectorizer, self.records, text_fn=self.text_fn
-        )
+        self.retriever = Retriever(self.vectorizer, self.records, text_fn=self.text_fn)
         self.ranker = build_ranker(enable_rerank)
         self.build_ms = (time.perf_counter() - t0) * 1000
 
     # -------------------------------------------------------------- 在线问答
-    def ask(self, query: str, top_k: int | None = None,
-            user_id: str | None = None,
-            trace_id: str | None = None,
-            client_ip: str | None = None) -> dict:
+    def ask(
+        self,
+        query: str,
+        top_k: int | None = None,
+        user_id: str | None = None,
+        trace_id: str | None = None,
+        client_ip: str | None = None,
+    ) -> dict:
         """回答一个问题。
 
         返回结构：
@@ -287,14 +293,21 @@ class FaqBot:
         # ---- W2 安全层 第一阶段：注入检测 + 限流（每个请求必走）----
         # will_call_llm=False：FAQ 命中不消耗 LLM 预算；budget 留到未命中分支再检查
         sec_pre = enforce_security(
-            query, ip=client_ip, user_id=user_id, will_call_llm=False,
+            query,
+            ip=client_ip,
+            user_id=user_id,
+            will_call_llm=False,
         )
         if not sec_pre.allowed:
             # 冷分支：被安全层拦下。构造逻辑见 _refusal_result()
             result = _refusal_result(
-                query, sec_pre,
+                query,
+                sec_pre,
                 round((time.perf_counter() - t0) * 1000, 2),
-                self.vectorizer.name, user_id, trace_id, client_ip,
+                self.vectorizer.name,
+                user_id,
+                trace_id,
+                client_ip,
             )
             logger.log_query(result)
             return result
@@ -309,9 +322,14 @@ class FaqBot:
             if cached is not None:
                 # 热路径，但构造逻辑独立 → 抽成 _cache_hit_result()
                 result = _cache_hit_result(
-                    cached, query,
+                    cached,
+                    query,
                     round((time.perf_counter() - t0) * 1000, 2),
-                    self.vectorizer.name, sec_pre, user_id, trace_id, client_ip,
+                    self.vectorizer.name,
+                    sec_pre,
+                    user_id,
+                    trace_id,
+                    client_ip,
                 )
                 logger.log_query(result)
                 return result
@@ -357,11 +375,11 @@ class FaqBot:
             # 占满、让检索路径一起排队（实测劣化 19 倍）。
             if not _slow_path_gate.acquire(blocking=False):
                 answer = config.FALLBACK_TEXT
-                fallback_info = {"type": "overload", "source": "fixed",
-                                 "rule": "slow_path_saturated"}
+                fallback_info = {"type": "overload", "source": "fixed", "rule": "slow_path_saturated"}
             else:
                 try:
                     from .fallback import dispatch
+
                     # !! 关键：dispatch() 只能调一次。
                     #    路由器内部会触发 LLM / 天气 API，调两次 = 双倍费用 + 双倍延迟。
                     # 把脱敏后的 query 透传给 LLM 通道；路由器分类仍用原 query
@@ -376,11 +394,9 @@ class FaqBot:
                     # 兜底链路的兜底。路由器设计上"任何一层失败都降级、不裸抛"，
                     # 但真出意外也不能让整个请求 500 —— 退到固定话术即可。
                     # 写 stderr 而不是 qa.log：别让异常记录混进问答日志的既有 schema。
-                    print(f"[fallback] dispatch 异常，降级为固定话术："
-                          f"{type(exc).__name__}: {exc}", file=sys.stderr)
+                    print(f"[fallback] dispatch 异常，降级为固定话术：{type(exc).__name__}: {exc}", file=sys.stderr)
                     answer = config.FALLBACK_TEXT
-                    fallback_info = {"type": "error", "source": "fixed",
-                                     "rule": type(exc).__name__}
+                    fallback_info = {"type": "error", "source": "fixed", "rule": type(exc).__name__}
                 finally:
                     _slow_path_gate.release()
 
@@ -404,11 +420,15 @@ class FaqBot:
                 "pii_hits": all_pii_hits,
                 "injection_rules": all_injection_rules,
             },
-            "candidates": [{"question": h.question, "tag": h.tag,
-                            "score": round(h.score, 4),
-                            "rerank_score": (round(h.rerank_score, 4)
-                                             if h.rerank_score is not None else None)}
-                           for h in hits],
+            "candidates": [
+                {
+                    "question": h.question,
+                    "tag": h.tag,
+                    "score": round(h.score, 4),
+                    "rerank_score": (round(h.rerank_score, 4) if h.rerank_score is not None else None),
+                }
+                for h in hits
+            ],
             "cache_hit": False,
             "user_id": user_id,
             "trace_id": trace_id,
@@ -417,17 +437,20 @@ class FaqBot:
 
         # ---- 写缓存：只缓存语料命中（确定性结果），兜底类不缓存 ----
         if matched and cache_key is not None:
-            _answer_cache.set(cache_key, {
-                "answer": result["answer"],
-                "matched": True,
-                "tag": result["tag"],
-                "score": result["score"],
-                "rerank_score": result["rerank_score"],
-                "matched_question": result["matched_question"],
-                "top_guess": result["top_guess"],
-                "fallback": None,
-                "candidates": result["candidates"],
-            })
+            _answer_cache.set(
+                cache_key,
+                {
+                    "answer": result["answer"],
+                    "matched": True,
+                    "tag": result["tag"],
+                    "score": result["score"],
+                    "rerank_score": result["rerank_score"],
+                    "matched_question": result["matched_question"],
+                    "top_guess": result["top_guess"],
+                    "fallback": None,
+                    "candidates": result["candidates"],
+                },
+            )
 
         logger.log_query(result)
         return result
@@ -442,9 +465,7 @@ class FaqBot:
         # !! 关键：reload 必须按当前向量化器类型走同一条预处理路径
         #   否则重建后索引矩阵和在线查询不一致，score 全部失真
         self.vectorizer.fit([self.text_fn(r["question"]) for r in self.records])
-        self.retriever = Retriever(
-            self.vectorizer, self.records, text_fn=self.text_fn
-        )
+        self.retriever = Retriever(self.vectorizer, self.records, text_fn=self.text_fn)
         logger.log_reload(self.corpus_path, len(self.intents), len(self.records))
         return len(self.intents), len(self.records)
 
@@ -571,8 +592,7 @@ def main() -> None:
     print("=" * 52)
     print(f"  校园 FAQ 问答机器人  (向量化方案：{s['vectorizer']})")
     print("=" * 52)
-    print(f"语料：{s['intents']} 个意图 / {s['questions']} 条问法"
-          f"   阈值：{s['threshold']}")
+    print(f"语料：{s['intents']} 个意图 / {s['questions']} 条问法   阈值：{s['threshold']}")
     print(f"索引构建耗时：{s['build_ms']:.1f} ms")
     print("输入 /help 查看命令，输入 /exit 退出。\n")
 
@@ -612,8 +632,7 @@ def main() -> None:
         last = r
         flag = "命中" if r["matched"] else "未命中"
         print(f"机器人：{r['answer']}")
-        print(f"        └─ {flag} | score={r['score']:.4f} | "
-              f"tag={r['tag']} | {r['latency_ms']:.1f} ms\n")
+        print(f"        └─ {flag} | score={r['score']:.4f} | tag={r['tag']} | {r['latency_ms']:.1f} ms\n")
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@
 只跑**语料命中**的样本（不触发 LLM / 天气），测的是最热的路径。
 每个样本用独立身份，避免限流把结果污染（见 README「限流会拦自家脚本」）。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,7 +39,7 @@ def timed_run(bot: FaqBot, queries: list[str]) -> dict:
     """返回延迟统计。每个样本独立身份 + 每次清空缓存，确保是冷的真实链路。"""
     lat = []
     for i, q in enumerate(queries):
-        clear_answer_cache()          # 排除答案缓存干扰，测真实链路
+        clear_answer_cache()  # 排除答案缓存干扰，测真实链路
         t0 = time.perf_counter()
         bot.ask(q, user_id=f"prof-{i}", client_ip=f"10.60.{i // 250}.{i % 250 + 1}")
         lat.append((time.perf_counter() - t0) * 1000)
@@ -60,12 +61,13 @@ def main() -> None:
 
     queries = load_queries(args.n)
     bot = FaqBot()
-    bot.ask("测试预热")            # 预热懒加载，避免污染 P99
+    bot.ask("测试预热")  # 预热懒加载，避免污染 P99
 
     print(f"== 热路径剖析：{len(queries)} 条命中样本（已预热，逐条清缓存）==")
     stat = timed_run(bot, queries)
-    print(f"P50 {stat['p50']:.2f} ms   P90 {stat['p90']:.2f} ms   "
-          f"P99 {stat['p99']:.2f} ms   均值 {stat['mean']:.2f} ms")
+    print(
+        f"P50 {stat['p50']:.2f} ms   P90 {stat['p90']:.2f} ms   P99 {stat['p99']:.2f} ms   均值 {stat['mean']:.2f} ms"
+    )
 
     if args.no_profile:
         return

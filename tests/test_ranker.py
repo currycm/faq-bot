@@ -6,6 +6,7 @@
     2. 命中判定走 RERANK_THRESHOLD（独立量纲），余弦阈值不再掺和
     3. 精排模型加载失败 → 降级为直通，启动绝不崩
 """
+
 from __future__ import annotations
 
 import sys
@@ -34,8 +35,7 @@ class _FakeModel:
         self.scores = scores
 
     def predict(self, pairs):
-        return [next((v for k, v in self.scores.items() if k in q), 0.0)
-                for _query, q in pairs]
+        return [next((v for k, v in self.scores.items() if k in q), 0.0) for _query, q in pairs]
 
 
 class _FakeRanker:
@@ -53,13 +53,13 @@ class _FakeRanker:
 
 
 def test_rerank_keeps_cosine_and_sets_rerank_score():
-    r = object.__new__(CrossEncoderRanker)   # 绕过 __init__，不加载真模型
+    r = object.__new__(CrossEncoderRanker)  # 绕过 __init__，不加载真模型
     r.model_name = "fake"
     r.model = _FakeModel({"b": 0.9, "a": 0.1})
     hits = [_hit("a", 0.80), _hit("b", 0.70)]
     out = r.rerank("q", hits)
-    assert [h.question for h in out] == ["b", "a"]   # 按精排分重排
-    assert out[0].score == 0.70                      # !! 余弦分不被覆盖
+    assert [h.question for h in out] == ["b", "a"]  # 按精排分重排
+    assert out[0].score == 0.70  # !! 余弦分不被覆盖
     assert out[0].rerank_score == pytest.approx(0.9)
 
 
@@ -116,6 +116,6 @@ def test_agent_matching_uses_rerank_threshold(tfidf_bot, monkeypatch):
 
     tfidf_bot.ranker = _FakeRanker(0.3)
     r2 = tfidf_bot.ask("图书馆几点开门", client_ip="10.9.0.2")
-    assert r2["matched"] is False                    # 余弦分再高也拦得住
-    assert r2["score"] >= 0.5                        # score 仍是余弦相似度
+    assert r2["matched"] is False  # 余弦分再高也拦得住
+    assert r2["score"] >= 0.5  # score 仍是余弦相似度
     assert r2["rerank_score"] == pytest.approx(0.3)
