@@ -15,13 +15,14 @@
 【v5 安全】所有写入 JSONL 的内容都强制过 redact() 脱敏，
 避免 Authorization、api_key 等字段被日志采集系统捞走。
 """
+
 from __future__ import annotations
 
 import json
 import re
 import sys
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -31,9 +32,25 @@ from . import config
 _dirs_ensured: set[str] = set()
 _dirs_lock = threading.Lock()
 
+# 日志轮转参数（#19：避免长期运行撑爆磁盘 / 无限增长）
+_LOG_MAX_BYTES = 100 * 1024 * 1024  # 单文件上限 100MB
+_LOG_BACKUP_COUNT = 5  # 保留 5 份历史
+_log_write_lock = threading.Lock()  # 保护「轮转 + 追加」的原子性（多 worker/线程并发）
+
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    """带时区的 ISO 时间戳，避免 HF Spaces(UTC) 与本地(Asia/Shanghai) 差 8 小时导致日志混乱。
+
+    优先用 Asia/Shanghai（对国内运维友好）；缺少 IANA 时区数据（部分 Windows 未装 tzdata）
+    时回退到 UTC（仍带 +00:00 后缀，绝不留裸本地时间）。
+    """
+    try:
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo("Asia/Shanghai")
+    except Exception:
+        tz = timezone.utc
+    return datetime.now(tz).isoformat(timespec="seconds")
 
 
 # ======================================================================== 敏感信息脱敏（v5）
@@ -46,13 +63,24 @@ def _now() -> str:
 
 # 字段名直接 redact 整个值（大小写不敏感）
 _SENSITIVE_KEYS = {
-    "authorization", "api_key", "apikey", "api-key",
-    "secret", "secret_key", "secret-key",
-    "access_token", "refresh_token", "id_token",
-    "password", "passwd", "pwd",
-    "cookie", "set-cookie",
-    "token",                          # 通用兜底（含 access/refresh 之外的私有 token）
-    "deepseek_api_key", "hefeng_api_key",  # 业务专属
+    "authorization",
+    "api_key",
+    "apikey",
+    "api-key",
+    "secret",
+    "secret_key",
+    "secret-key",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "password",
+    "passwd",
+    "pwd",
+    "cookie",
+    "set-cookie",
+    "token",  # 通用兜底（含 access/refresh 之外的私有 token）
+    "deepseek_api_key",
+    "hefeng_api_key",  # 业务专属
 }
 
 # 在字符串里匹配"经典密钥形态"的正则
@@ -84,6 +112,7 @@ def _redact_string(s: str) -> str:
         s = pattern.sub(replacement, s)
     try:
         from .security.redact import redact as _redact_pii
+
         s = _redact_pii(s).sanitized
     except Exception:
         pass
@@ -142,9 +171,9 @@ def _ensure_parent(path: Path) -> None:
     只是不再重复打 syscall。
     """
     key = str(path.parent)
-    if key in _dirs_ensured:          # 热路径：一次集合查找，无 syscall
+    if key in _dirs_ensured:  # 热路径：一次集合查找，无 syscall
         return
-    with _dirs_lock:                  # 并发下只让一个线程去 mkdir
+    with _dirs_lock:  # 并发下只让一个线程去 mkdir
         # 双检：拿到锁之后再确认一次，避免重复 mkdir（幂等但不必要）
         if key in _dirs_ensured:
             return
@@ -161,6 +190,24 @@ def clear_dir_cache() -> None:
     """
     with _dirs_lock:
         _dirs_ensured.clear()
+
+
+def _maybe_rotate(path: Path, max_bytes: int = _LOG_MAX_BYTES, backup_count: int = _LOG_BACKUP_COUNT) -> None:
+    """写前轮转：超过 max_bytes 时 qa.log → qa.log.1 → qa.log.2 …（最多 backup_count 份）。
+
+    只做轻量 rename，不改动既有 redact / 重试逻辑；任何异常都吞掉，绝不影响主流程。
+    """
+    try:
+        if not path.exists() or path.stat().st_size < max_bytes:
+            return
+        for i in range(backup_count - 1, 0, -1):
+            prev = Path(f"{path}.{i}")
+            nxt = Path(f"{path}.{i + 1}")
+            if prev.exists():
+                prev.replace(nxt)
+        path.replace(Path(f"{path}.1"))
+    except OSError:
+        pass
 
 
 def write_jsonl(path: Path, record: dict) -> None:
@@ -181,8 +228,10 @@ def write_jsonl(path: Path, record: dict) -> None:
 
     try:
         _ensure_parent(path)
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(line)
+        with _log_write_lock:
+            _maybe_rotate(path)
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(line)
     except OSError as exc:
         # 目录可能在进程运行期间被删掉 → "已就绪"缓存变脏。
         # 清掉缓存、重建目录后重试一次；仍然失败才按原逻辑降级打印。
@@ -220,10 +269,13 @@ def log_query(result: dict) -> None:
 
     # 未命中问题单独存一份，方便每周导出分析
     if not record["matched"]:
-        write_jsonl(config.UNMATCHED_PATH, {
-            **record,
-            "top_guess": result.get("top_guess"),   # 最接近的意图，可能是"差一点就命中"
-        })
+        write_jsonl(
+            config.UNMATCHED_PATH,
+            {
+                **record,
+                "top_guess": result.get("top_guess"),  # 最接近的意图，可能是"差一点就命中"
+            },
+        )
 
     if config.LOG_TO_CONSOLE:
         print(f"[log] {record}")
@@ -243,19 +295,22 @@ def log_feedback(result: dict, vote: str, comment: str = "") -> None:
         return
 
     fb = result.get("fallback") or {}
-    write_jsonl(config.FEEDBACK_PATH, {
-        "timestamp": _now(),
-        "query": result.get("query", ""),
-        "matched": result.get("matched", False),
-        "tag": result.get("tag"),
-        "score": round(result.get("score", 0.0), 4),
-        # 兜底来源：区分"知识库答得不好"还是"LLM 答得不好"
-        "fallback_type": fb.get("type"),
-        "fallback_source": fb.get("source"),
-        "answer": result.get("answer", ""),
-        "vote": vote,
-        "comment": comment,
-    })
+    write_jsonl(
+        config.FEEDBACK_PATH,
+        {
+            "timestamp": _now(),
+            "query": result.get("query", ""),
+            "matched": result.get("matched", False),
+            "tag": result.get("tag"),
+            "score": round(result.get("score", 0.0), 4),
+            # 兜底来源：区分"知识库答得不好"还是"LLM 答得不好"
+            "fallback_type": fb.get("type"),
+            "fallback_source": fb.get("source"),
+            "answer": result.get("answer", ""),
+            "vote": vote,
+            "comment": comment,
+        },
+    )
 
 
 def summarize_feedback() -> dict:
@@ -292,9 +347,7 @@ def summarize_feedback() -> dict:
                     down += 1
                     q = (rec.get("query") or "").strip()
                     if q:
-                        item = bad.setdefault(
-                            q, {"query": q, "count": 0, "tag": rec.get("tag")}
-                        )
+                        item = bad.setdefault(q, {"query": q, "count": 0, "tag": rec.get("tag")})
                         item["count"] += 1
     except OSError:
         return {"total": 0, "up": 0, "down": 0, "up_rate": 0.0, "top_bad": []}
@@ -313,10 +366,13 @@ def log_reload(corpus_path, n_intents: int, n_questions: int) -> None:
     """记录语料热更新事件。"""
     if not config.ENABLE_LOGGING:
         return
-    write_jsonl(config.LOG_PATH, {
-        "timestamp": _now(),
-        "event": "corpus_reload",
-        "corpus": str(corpus_path),
-        "intents": n_intents,
-        "questions": n_questions,
-    })
+    write_jsonl(
+        config.LOG_PATH,
+        {
+            "timestamp": _now(),
+            "event": "corpus_reload",
+            "corpus": str(corpus_path),
+            "intents": n_intents,
+            "questions": n_questions,
+        },
+    )
