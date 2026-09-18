@@ -1,9 +1,9 @@
 # 无溯源意图清单（unsourced intents）
 
-- **语料快照**：`data/qa_corpus.json` 1.15.1，83 意图 / 643 问法
+- **语料快照**：`data/qa_corpus.json` 1.16.0，87 意图 / 675 问法
 - **口径**：`_meta` 缺失 —— 既没有官方通知原文可摘，也没有显式标注为「引导型」
 - **生成方式**：`python scripts/report_unsourced.py`（规则可重算，非手填）
-- **结论**：**1 / 83 个意图无溯源**
+- **结论**：**1 / 87 个意图无溯源**
 
 > 风险分级由两条信号自动判定：答案里是否出现**具体校方事实**（日期/时刻/金额/数量/电话/网址/地点），
 > 以及是否带**兜底措辞**（「以…为准」这类自我限定）。
@@ -13,7 +13,7 @@
 | 类别 | 意图数 | 溯源状态 | 说明 |
 |---|---|---|---|
 | `real_notice_v3` | 24 | ✅ 有官方通知原文 | 全部是部门前缀 `jwc_` / `xsc_` / `xxh_`，含 `url` + `title` + `date` |
-| `official_doc` | 30 | ✅ 有官方文档/页面 | `dorm_repair`, `enrollment_report`, `psych_counseling`, `jwc_student_id_reissue`, `jwc_certificate_issue`, `jwc_certificate_correction`, `jwc_diploma_reissue`, `zs_contact`, `library_contact`, `library_service`, `library_book_lost`, `library_purchase`, `jwc_suspend_resume`, `jwc_exam_defer`, `jwc_graduation_project`, `major_intro`, `zs_admission_query`, `tuition_fee`, `dorm_summer_stay`, `zs_registry_copy`, `enrollment_checkin`, `archive_transfer`, `party_org_transfer`, `household_migration`, `freshman_military_service`, `campus_transport_route`, `tuition_payment`, `student_loan`, `department_phone`, `campus_building_location`，含 `url` + `title`，来源为官方 PDF/网页（v1.6.0 新增）|
+| `official_doc` | 34 | ✅ 有官方文档/页面 | `dorm_repair`, `enrollment_report`, `psych_counseling`, `jwc_student_id_reissue`, `jwc_certificate_issue`, `jwc_certificate_correction`, `jwc_diploma_reissue`, `zs_contact`, `library_contact`, `library_service`, `library_book_lost`, `library_purchase`, `jwc_suspend_resume`, `jwc_exam_defer`, `jwc_graduation_project`, `major_intro`, `zs_admission_query`, `tuition_fee`, `dorm_summer_stay`, `zs_registry_copy`, `enrollment_checkin`, `archive_transfer`, `party_org_transfer`, `household_migration`, `freshman_military_service`, `campus_transport_route`, `tuition_payment`, `student_loan`, `department_phone`, `campus_building_location`, `school_profile`, `school_history`, `school_faculty`, `school_honors`，含 `url` + `title`，来源为官方 PDF/网页（v1.6.0 新增）|
 | `guidance` | 8 | ⚠️ 有标注、无原文 | `jwc_major_change`, `off_campus_info`, `zs_notice_addr_change`, `card_freeze`, `card_realname`, `dorm_electricity`, `academic_calendar`, `zs_score_line`，正文已声明以官方为准 |
 | `manual_verified` | 20 | 🟡 **人工核实，无原文** | 无 url 可引，但有核实对象与核实日期（见第三节）；可信度高于「作者推测」、低于「有原文可核」 |
 | **无 `_meta`** | **1** | ❌ **无溯源** | `campus_map_guide` |
@@ -68,6 +68,10 @@
 |---|---|---|---|---|
 | `department_phone` | `official_doc` | 《学生手册》学生常用电话表 + 招生信息网《新生入学须知》附表 | [学校行政、学院办公电话（含办公室位置）](https://zs.niit.edu.cn/_upload/article/files/12/fc/e73dc3ed4e8da59f2e8187d79edb/3aa1181c-66bc-40f3-abe6-2b2b9af0a258.pdf) | 2026-09-17 |
 | `campus_building_location` | `official_doc` | 《学生手册》校区平面示意图（用户提供扫描件） | [校园楼宇与设施位置（仙林 / 天堂校区）](None) | 2026-09-17 |
+| `school_faculty` | `official_doc` | 南京工业职业技术大学官网「人才队伍」+「学校简介」（学校概况栏目） | [师资力量 / 人才队伍](https://www.niit.edu.cn/4052/list.htm) | 2026-09-18 |
+| `school_history` | `official_doc` | 南京工业职业技术大学官网「历史沿革」（学校概况栏目） | [历史沿革（1918 中华职业学校 → 2020 更名大学）](https://www.niit.edu.cn/4058/list.htm) | 2026-09-18 |
+| `school_profile` | `official_doc` | 南京工业职业技术大学官网「学校简介」（学校概况栏目） | [学校简介 / 办学规模 / 办学定位](https://www.niit.edu.cn/4057/list.htm) | 2026-09-18 |
+| `school_honors` | `official_doc` | 南京工业职业技术大学官网「学校简介」（荣誉散布于正文，官网无独立荣誉栏目） | [办学地位 / 主要荣誉 / 教学成果](https://www.niit.edu.cn/4057/list.htm) | 2026-09-18 |
 | `library_book_lost` | `official_doc` | 图书馆官网 | [违章处罚条例](https://tsg.niit.edu.cn/b3/74/c5899a45940/page.htm) | 2022-03-03 |
 | `library_contact` | `official_doc` | 图书馆官网 | [本馆电话](https://tsg.niit.edu.cn/bgdh/list.htm) | 2026-09-15 |
 | `library_purchase` | `official_doc` | 图书馆官网 | [资源荐购](https://tsg.niit.edu.cn/zyjg/list.htm) | 2026-09-15 |
