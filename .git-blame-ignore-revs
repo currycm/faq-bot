@@ -1,0 +1,8 @@
+# 纯格式化提交：git blame / git log -L 时跳过这些 commit，
+# 避免 52 文件的机械重排把每一行的归属都刷成同一个人。
+#
+# 本机生效（每个克隆都要设一次，无法随仓库自动带上）：
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# 2026-09-18 ruff 0.16.8 全量重排（52 文件，+1358/-899，无语义改动）
+a6d62813fb43d31044b33628c342dcd26f314142
