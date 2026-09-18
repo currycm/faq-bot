@@ -16,9 +16,15 @@
 |---|---|
 | 目录 | 项目根目录 |
 | 语言 | `python` |
-| 安装命令 | `pip install -r requirements-deploy.txt` |
+| 安装命令 | `pip install -r requirements-deploy.txt && python scripts/prefetch_model.py` |
 | 启动命令 | `python -m streamlit run app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true --server.enableCORS false --server.enableXsrfProtection false --browser.gatherUsageStats false` |
 | 端口 | `8501` |
+| 上传前必须移出目录 | `.env`、`secrets/`、**`models/`**（92MB，会让上传超限） |
+
+> 2026-09-18 用上表这套参数**重新发布成功**，并用无头浏览器复验：线上「床铺标准尺寸：**2.0m × 0.9m**」、
+> 「双创大楼在哪」命中新意图 `campus_building_location`。安装命令末尾的
+> `scripts/prefetch_model.py` 会在**构建期**从 hf-mirror 把模型下下来 ——
+> 既避免随包上传超限，又能让下载失败在构建日志里直接暴露。
 
 ### ⚠️ 发布前检查（每一条都真踩过，2026-09-15）
 
@@ -29,10 +35,19 @@
    `service did not become reachable within 60s`；写死 `8501` 就对了。
 3. **`.env.example` 里不留 `redis://...` 字面连接串**。平台据此判定
    "本项目需要外部 Redis 服务"并**直接拒绝发布**（本项目 Redis 本就是可选的）。
-4. **随包模型不能放在 `.gitignore` 里**：部署**按 `.gitignore` 排除上传内容**。
-   本次把 92MB 的 `models/` 加进 `.gitignore` 想"不进 git"，结果连上传也被排除了。
-   正解是写进 **`.git/info/exclude`**（只对本地生效、不进仓库）——git 保持干净，
-   部署却能拿到它。
+4. 🔴 **不要随包模型**（2026-09-18 实测更正，此前这条写反了）：
+   把 92MB 的 `models/` 放进上传载荷后，**发布必然 `fetch failed`** ——
+   对照实验：约 1KB 的静态应用**发布成功**，含随包模型的同一套流程**连续 7 次失败**，
+   且失败发生在**上传阶段**（不是构建）。⇒ 是**上传载荷上限**，不是服务故障。
+   **正确做法是让环境自己下载模型**（发布沙箱实测：
+   `hf-mirror.com` **可达（HTTP 200）**，而 `huggingface.co` 与 `pypi.org` 都被 TLS 中断 ——
+   pip 能用是因为走内网镜像）。`src/config.py` 本就默认
+   `HF_MIRROR = "https://hf-mirror.com"` 并 `setdefault("HF_ENDPOINT", HF_MIRROR)`；
+   未随包时 `BGE_MODEL_PATH` 会落回 HF 编号 → 自动经镜像下载。
+   建议在 `installCmd` 末尾追加 `&& python scripts/prefetch_model.py`，把下载挪到构建期
+   （下载失败会在构建日志里直接暴露，而不是拖到运行时报「服务暂时不可用」）。
+   ⚠️ `.git/info/exclude` 只让 **git** 忽略它 —— 发布工具是否跳过它取决于它读的是哪个忽略文件；
+   要保证发布一定跳过，**最稳的是把 `models/` 物理移出项目目录**（发布完再移回）。
 5. **发布依赖用 `requirements-deploy.txt`**：torch 锁 CPU 版（默认会拉 CUDA 版 2GB+），
    不带 gunicorn/fastapi/redis（单进程 Streamlit 用不上）。
 
@@ -52,7 +67,7 @@
 | 现象 | 根因 | 修法 |
 |---|---|---|
 | 页面正常，一问就报错 | 机器人懒加载，失败被 UI 吞掉 | **把初始化挪到构建期**：`scripts/prefetch_model.py` 放进 `installCmd`，失败会在**构建日志**里直接暴露 |
-| 构建报 `does not appear to have a file named model.safetensors` | 1️⃣ 构建环境**连不上 hf-mirror**，模型下不下来<br>2️⃣ 且 `config.py` 的离线判定**只看快照目录存在与否** —— 一次失败留下的空目录会让它永久判定"已缓存、别联网"，把后续重试全堵死 | 已修 `config.py`：改为**必须存在权重文件**才算命中，并显式 `pop` 掉外部预设的 `HF_HUB_OFFLINE`；同时把模型**随包带上** |
+| 构建报 `does not appear to have a file named model.safetensors` | 1️⃣ 首次下载失败后，`config.py` 的离线判定**只看快照目录存在与否** —— 一次失败留下的空目录会让它永久判定"已缓存、别联网"，把后续重试全堵死<br>2️⃣ ~~构建环境连不上 hf-mirror~~ **（2026-09-18 实测更正：沙箱里 hf-mirror **可达**，是 `huggingface.co` 连不上）** | 已修 `config.py`：改为**必须存在权重文件**才算命中，并显式 `pop` 掉外部预设的 `HF_HUB_OFFLINE`。<br>⚠️ **不要再"把模型随包带上"** —— 见上方第 4 条：那会让上传载荷超限、发布恒失败 |
 | 随包了模型却仍走联网 | `scripts/prefetch_model.py` 误用 `BGE_MODEL_NAME`（HF 编号）而非 `BGE_MODEL_PATH`（本地路径）——**本地有 HF 缓存所以看不出来**，一到干净环境就暴露 | 已修：用 `BGE_MODEL_PATH`；`src/vectorizer.py` 同样改为优先本地目录 |
 | 诊断信息看不到 | 构建日志只保留尾部若干行，单独 `print` 的诊断被截掉 | 把诊断（本地目录是否存在、目录内文件、权重字节数）**拼进失败那一行本身** |
 
