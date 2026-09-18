@@ -24,7 +24,7 @@ from src.retriever import Hit  # noqa: E402
 
 
 def _hit(question: str, score: float) -> Hit:
-    return Hit(index=0, question=question, answer="a", tag="t", score=score)
+    return Hit(question=question, answer="a", tag="t", score=score)
 
 
 class _FakeModel:
@@ -42,7 +42,6 @@ class _FakeRanker:
     """把 top1 的精排分钉成固定值，验证 agent 命中判定走 RERANK_THRESHOLD。"""
 
     name = "fake"
-    has_rerank = True
 
     def __init__(self, score: float):
         self.score = score

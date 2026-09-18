@@ -37,8 +37,6 @@ class BaseRanker:
     """排序器接口：输入候选列表，输出重排后的候选列表。"""
 
     name = "base"
-    # True 表示 rerank 会产出 rerank_score，agent 据此切换命中阈值
-    has_rerank = False
 
     def rerank(self, query: str, hits: list[Hit]) -> list[Hit]:
         raise NotImplementedError
@@ -63,7 +61,6 @@ class CrossEncoderRanker(BaseRanker):
     """
 
     name = "cross-encoder"
-    has_rerank = True
 
     def __init__(self, model_name: str | None = None):
         # 2026-09 修复：默认模型从英文的 cross-encoder/mmarco-mMiniLMv2

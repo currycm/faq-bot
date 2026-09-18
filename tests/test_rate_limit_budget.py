@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import time
 
-import pytest
 
 from src.security.rate_limit import RateLimiter, check_rate_limit, reset_all
 from src.security.budget import (

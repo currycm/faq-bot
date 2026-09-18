@@ -94,8 +94,6 @@ class BudgetGuard:
         self.name = name
         self._window = _Window()
         self._lock = threading.Lock()
-        # 最近一次被熔断的时间（仅用于日志，不影响逻辑）
-        self._last_trip_at: Optional[float] = None
 
     def check(self, estimated_cost_cny: Optional[float] = None) -> tuple[bool, str]:
         """检查当前是否允许调用 LLM。
@@ -166,7 +164,6 @@ class BudgetGuard:
         """清空窗口（测试 / 运维手动重置用）。"""
         with self._lock:
             self._window.events.clear()
-            self._last_trip_at = None
 
 
 # ===== 默认熔断器 =====

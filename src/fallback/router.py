@@ -214,12 +214,3 @@ def dispatch(query: str, sanitized_query: Optional[str] = None) -> RouterDecisio
         })
 
     return RouterDecision(query_type=qt, answer=ans, source=src, rule=rule)
-
-
-class FallbackRouter:
-    """对外类形式，方便测试 mock。"""
-    def __init__(self):
-        pass
-
-    def route(self, query: str, sanitized_query: Optional[str] = None) -> RouterDecision:
-        return dispatch(query, sanitized_query=sanitized_query)

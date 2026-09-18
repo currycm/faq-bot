@@ -21,8 +21,8 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from src.agent import FaqBot
-from src.security import enforce_security, SecurityVerdict
-from src.security.budget import get_budget, reset_budget
+from src.security import enforce_security
+from src.security.budget import reset_budget
 from src.security.rate_limit import reset_all as reset_rate_limit
 
 

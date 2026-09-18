@@ -28,7 +28,6 @@
 from __future__ import annotations
 
 import base64
-import struct
 from pathlib import Path
 
 import streamlit as st
@@ -128,61 +127,11 @@ CAMPUSES: dict[str, dict] = {
 }
 
 
-def _jpeg_size(path: Path) -> tuple[int, int]:
-    """纯标准库读取 JPEG 尺寸 (width, height)，避免引入 Pillow 依赖。
-
-    非标准 JPEG 或读取失败时退回 4:3 比例，不影响地图渲染。
-
-    2026-09 修复：JPEG 段之间允许 0xFF 填充字节（标准允许），
-    旧逻辑遇到填充会把填充字节当 marker、把 marker 当长度高字节，
-    直接读到错误位置，宽高比静默退化为 4:3 导致地图被拉伸。
-    """
-    try:
-        with path.open("rb") as f:
-            if f.read(2) != b"\xff\xd8":
-                return 4, 3
-            while True:
-                b = f.read(1)
-                while b and b != b"\xff":
-                    b = f.read(1)
-                # 跳过连续的 0xFF 填充字节（标准 JPEG 段间填充）
-                while b == b"\xff":
-                    b = f.read(1)
-                marker = b
-                if not marker or marker == b"\xd9":  # EOI / EOF
-                    return 4, 3
-                if marker in (b"\xc0", b"\xc1", b"\xc2", b"\xc3"):
-                    f.read(3)
-                    h, w = struct.unpack(">HH", f.read(4))
-                    return w, h
-                ln_bytes = f.read(2)
-                if len(ln_bytes) < 2:
-                    return 4, 3
-                ln = struct.unpack(">H", ln_bytes)[0]
-                if ln < 2:
-                    return 4, 3
-                f.read(ln - 2)
-    except Exception:
-        return 4, 3
-
-
 def _img_data_uri(path: Path) -> str:
     """把图片读成 data URI，内嵌进 Folium HTML，免去静态文件服务。"""
     raw = path.read_bytes()
     b64 = base64.b64encode(raw).decode("ascii")
     return f"data:image/jpeg;base64,{b64}"
-
-
-def _rel_to_latlon(bounds: list[list[float]], x: float, y: float) -> tuple[float, float]:
-    """把图片内相对坐标 (x%, y%) 映射到图片地理边界的经纬度。
-
-    bounds = [[south, west], [north, east]]；
-    图片顶部 = y0 = north，图片左 = x0 = west。
-    """
-    (south, west), (north, east) = bounds
-    lat = north - (y / 100.0) * (north - south)
-    lon = west + (x / 100.0) * (east - west)
-    return lat, lon
 
 
 # 自包含查看器模板：HTML + 原生 JS，**不引用任何外部资源**。

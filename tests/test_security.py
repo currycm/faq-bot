@@ -14,7 +14,6 @@
 """
 from __future__ import annotations
 
-import pytest
 
 from src.security.redact import redact
 from src.security.injection import detect, get_refusal_text

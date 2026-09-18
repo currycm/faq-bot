@@ -320,35 +320,3 @@ def log_reload(corpus_path, n_intents: int, n_questions: int) -> None:
         "intents": n_intents,
         "questions": n_questions,
     })
-
-
-def summarize_unmatched(limit: int = 20) -> list[dict]:
-    """读取未命中日志，按出现次数排序，用于每周语料迭代。"""
-    if not config.UNMATCHED_PATH.exists():
-        return []
-
-    counter: dict[str, dict] = {}
-    try:
-        with open(config.UNMATCHED_PATH, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                q = rec.get("query", "").strip()
-                if not q:
-                    continue
-                if q not in counter:
-                    counter[q] = {"query": q, "count": 0,
-                                  "top_guess": rec.get("top_guess"),
-                                  "last_score": rec.get("score")}
-                counter[q]["count"] += 1
-    except OSError:
-        # 2026-09 修复：与 summarize_feedback 保持一致，
-        # 文件被删/无权限时不把异常抛给调用方（运维面板）。
-        return []
-
-    return sorted(counter.values(), key=lambda x: -x["count"])[:limit]

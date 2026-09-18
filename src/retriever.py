@@ -26,7 +26,6 @@ from . import preprocess
 @dataclass
 class Hit:
     """一条召回结果。"""
-    index: int        # 在展平语料中的下标
     question: str     # 命中的预设问法（原始文本，用于展示）
     answer: str       # 对应答案
     tag: str          # 意图标签
@@ -80,9 +79,8 @@ class Retriever:
         idx = np.argsort(sims)[-top_k:][::-1]
 
         return [
-            Hit(
-                index=int(i),
-                question=self.records[i]["question"],
+        Hit(
+            question=self.records[i]["question"],
                 answer=self.records[i]["answer"],
                 tag=self.records[i]["tag"],
                 score=float(sims[i]),

@@ -290,7 +290,6 @@ def parse_args() -> argparse.Namespace:
 def derive_tag(source: str, idx: int, notice_id: str) -> str:
     """根据 source + notice_id 派生语义化 tag。"""
     sid = notice_id.split("_", 1)[0]
-    mid = notice_id.split("_", 1)[1]
     tag_map = {
         "jwc_001": "jwc_pe_select",
         "jwc_002": "jwc_major_elective_select",

@@ -77,7 +77,6 @@ class ListPageParser(HTMLParser):
         super().__init__()
         self.base = base_url
         self.items: list[dict] = []     # {url, title, date}
-        self._in_a = False
         self._current_href: str | None = None
         self._current_text: list[str] = []
         self._after_link_buf: list[str] = []  # 链接之后的日期文本
@@ -87,7 +86,6 @@ class ListPageParser(HTMLParser):
         if tag == "a":
             href = dict(attrs).get("href")
             if href and "page.htm" in href:
-                self._in_a = True
                 self._current_href = href
                 self._current_text = []
                 self._after_link_buf = []

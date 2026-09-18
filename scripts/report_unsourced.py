@@ -48,8 +48,6 @@ HEDGE = re.compile(
     r"以[^。；，]{0,16}为准|具体(?:以|见|详见)|详见原文|详情见|见\s*[a-z_]+|请以"
 )
 
-DEPT = {"jwc": "教务处", "xsc": "学工处", "xxh": "数智化处", "hqglc": "后勤管理服务中心"}
-
 
 def scan_hard_facts(answer: str) -> list[str]:
     """返回命中的硬事实类别（去重、保持声明顺序）。"""
