@@ -48,13 +48,18 @@ jobs:
       # 2026-09 修复：test_ui.py 的集成测试依赖 8000 端口的 API 服务，
       # 此前 CI 只跑 pytest -q、不启动服务，那 6 个测试在 CI 上永远
       # skip，"128 个测试"虚高。现在先拉起 uvicorn 再跑测试。
+      #
+      # !! 等待判据必须与 tests/test_ui.py 的 backend fixture 一致（都是
+      #    status=ok 且 ready=true）。2026-09-19 修：此前这里只 grep
+      #    "status":"ok"，而 test_ui 看的是 ready 字段 —— 判据不一致会
+      #    让服务"看起来起来了"但集成测试仍被 skip，覆盖率跌破 80% 门禁。
       - name: Start API server
         env:
           HF_HUB_DISABLE_PROGRESS_BARS: "1"
         run: |
           nohup uvicorn api:app --host 127.0.0.1 --port 8000 > /tmp/api.log 2>&1 &
           for i in $(seq 1 90); do
-            if curl -sf http://127.0.0.1:8000/health | grep -q '"status":"ok"'; then
+            if curl -sf http://127.0.0.1:8000/health | python -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('status')=='ok' and d.get('ready') else 1)"; then
               echo "API ready after ${i} tries"
               exit 0
             fi

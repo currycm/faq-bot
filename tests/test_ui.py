@@ -22,25 +22,47 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import time
+
 import pytest  # noqa: E402
 import requests  # noqa: E402
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
 API_BASE = "http://127.0.0.1:8000"
 
+# !! 探测参数：CI 里 uvicorn 是后台起的，`/health` 会先返回 status=starting/ready=false，
+#    过几秒才转 ok。所以探测必须「带重试窗口」，且判据要和 ci.yml 的启动等待一致。
+#    2026-09-19 修：此前用模块级 `pytest.mark.skipif(not _backend_ready())`，
+#    在 **pytest 收集阶段** 就求值一次 —— 服务稍慢就整组永久 skip，
+#    导致 CI 覆盖率掉到 79.6% 跌破 80% 门禁。现改为运行期 fixture。
+_BACKEND_WAIT_SECONDS = 60.0
+_BACKEND_POLL_INTERVAL = 1.0
+
 
 def _backend_ready() -> bool:
+    """后端是否真的可用（与 ci.yml 的判据统一）。
+
+    ci.yml 用的是 `curl -sf .../health | grep '"status":"ok"'`；
+    这里等价地先看 status，再兼容 ready 布尔字段（两者都由 api.py 的
+    HealthResponse 提供，ready=true 时 status 必为 ok）。
+    """
     try:
         r = requests.get(f"{API_BASE}/health", timeout=3)
-        return bool(r.json().get("ready"))
+        data = r.json()
+        return data.get("status") == "ok" and bool(data.get("ready"))
     except Exception:
         return False
 
 
-requires_backend = pytest.mark.skipif(
-    not _backend_ready(),
-    reason=f"后端未就绪（{API_BASE}/health），跳过前端测试",
-)
+@pytest.fixture(scope="module")
+def backend():
+    """运行期等待后端就绪；等不到才 skip（而不是在收集阶段就 skip）。"""
+    deadline = time.monotonic() + _BACKEND_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        if _backend_ready():
+            return API_BASE
+        time.sleep(_BACKEND_POLL_INTERVAL)
+    pytest.skip(f"后端 {_BACKEND_WAIT_SECONDS:.0f}s 内未就绪（{API_BASE}/health），跳过前端测试")
 
 
 def _main_text(at) -> str:
@@ -54,8 +76,7 @@ def _main_text(at) -> str:
     return md + "\n" + cap
 
 
-@requires_backend
-def test_initial_render():
+def test_initial_render(backend):
     """首次打开：无异常 + 有 7 条推荐问题。"""
     print("=" * 60)
     print("测试 1：首次渲染")
@@ -87,8 +108,7 @@ def test_initial_render():
     print(f"\n  首次渲染通过，推荐问题 {len(suggested)} 条\n")
 
 
-@requires_backend
-def test_source_lines():
+def test_source_lines(backend):
     """提问后：答案渲染 + 来源说明正确。
 
     v7.1 起来源从「彩色徽章」改成「一行灰字」，文案也变了。
@@ -122,8 +142,7 @@ def test_source_lines():
     print("\n  来源说明渲染正常\n")
 
 
-@requires_backend
-def test_no_badge_html():
+def test_no_badge_html(backend):
     """防回归：来源不能用 HTML 徽章，必须是纯文本 caption。
 
     徽章方案的问题：写死颜色、深浅主题不适配、需要 unsafe_allow_html。
@@ -141,8 +160,7 @@ def test_no_badge_html():
     print("  来源已是纯文本，未使用 HTML 徽章")
 
 
-@requires_backend
-def test_theme_injected():
+def test_theme_injected(backend):
     """防回归：自定义 CSS 必须被注入（否则页面退回 Streamlit 默认皮肤）。"""
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=300)
     at.run()
@@ -172,8 +190,7 @@ def test_theme_injected():
     print(f"  自定义 CSS 已注入（{len(css)} 字符）")
 
 
-@requires_backend
-def test_debug_hidden_by_default():
+def test_debug_hidden_by_default(backend):
     """防回归：默认不能出现调试字段（trace_id / 相似度 / 候选分数）。
 
     这些是给开发排查用的，设 FAQ_DEBUG=1 才该显示。
@@ -190,8 +207,7 @@ def test_debug_hidden_by_default():
     print("  调试信息默认已隐藏")
 
 
-@requires_backend
-def test_debug_shown_when_enabled():
+def test_debug_shown_when_enabled(backend):
     """正向：设 FAQ_DEBUG=1 时调试面板必须出现。
 
     2026-09 修复：此前只有上面那条负向断言（默认不出现），
@@ -300,8 +316,7 @@ def test_single_scroll_layer_and_no_collapse():
     print("  滚动仅一层，问答不再折叠")
 
 
-@requires_backend
-def test_feedback_button():
+def test_feedback_button(backend):
     """点"有用"后：写入反馈日志 + 按钮变为已反馈状态。"""
     print("=" * 60)
     print("测试 3：反馈按钮")
